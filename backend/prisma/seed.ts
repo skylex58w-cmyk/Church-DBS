@@ -1,16 +1,92 @@
+/*
+Seed script for RBAC: creates default permissions, roles and a development admin user.
+
+Notes:
+- Do NOT use this seed script in production without changing the default admin password.
+- The script uses environment variables from backend/.env (see .env.example).
+*/
+
 import { PrismaClient } from '@prisma/client';
+import bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
 
-async function seed() {
-  console.log('Seeding initial data...');
-  const org = await prisma.organization.upsert({ where: { id: 1 }, update: {}, create: { name: 'Default Church' } });
-  const branch = await prisma.branch.upsert({ where: { id: 1 }, update: {}, create: { name: 'Main Branch', organizationId: org.id } });
-  const roleAdmin = await prisma.role.upsert({ where: { name: 'SuperAdmin' }, update: {}, create: { name: 'SuperAdmin', description: 'Full access' } });
-  const perm = await prisma.permission.upsert({ where: { name: 'users.manage' }, update: {}, create: { name: 'users.manage' } });
-  const user = await prisma.user.upsert({ where: { email: 'admin@example.com' }, update: {}, create: { email: 'admin@example.com', passwordHash: '$2b$10$CwTycUXWue0Thq9StjUM0uJ8X1qg6K0u0Yw1Z6lQe1vqQZ1v2K5eW' } });
-  await prisma.userRole.upsert({ where: { id: 1 }, update: {}, create: { userId: user.id, roleId: roleAdmin.id, branchId: branch.id } });
-  console.log('Seed completed. Admin: admin@example.com / password: changeme');
+async function main() {
+  console.log('Seeding RBAC data...');
+
+  const permissions = [
+    { name: 'members.view', description: 'View members' },
+    { name: 'members.create', description: 'Create members' },
+    { name: 'members.update', description: 'Update members' },
+    { name: 'finance.record', description: 'Record financial transactions' },
+    { name: 'finance.approve', description: 'Approve financial transactions' },
+    { name: 'reports.export', description: 'Export reports' },
+    { name: 'pastoral.view', description: 'Access pastoral records (sensitive)' },
+    { name: 'users.manage', description: 'Manage users and roles' },
+    { name: 'roles.manage', description: 'Manage roles and role permissions' }
+  ];
+
+  for (const p of permissions) {
+    await prisma.permission.upsert({
+      where: { name: p.name },
+      update: {},
+      create: p
+    }).catch((e) => {
+      // ignore unique/other transient errors during iterative development
+    });
+  }
+
+  const adminRole = await prisma.role.upsert({
+    where: { name: 'Super Administrator' },
+    update: {},
+    create: { name: 'Super Administrator', description: 'Full access to the system' }
+  });
+
+  // attach all permissions to admin role
+  const allPerms = await prisma.permission.findMany();
+  for (const perm of allPerms) {
+    try {
+      await prisma.rolePermission.create({
+        data: {
+          roleId: adminRole.id,
+          permissionId: perm.id
+        }
+      });
+    } catch (e) {
+      // ignore duplicates
+    }
+  }
+
+  // create a dev admin user if none exists
+  const adminEmail = process.env.RBAC_DEV_ADMIN_EMAIL || 'admin@example.com';
+  const adminPassword = process.env.RBAC_DEV_ADMIN_PASSWORD || 'admin';
+  const hash = await bcrypt.hash(adminPassword, 10);
+
+  const adminUser = await prisma.user.upsert({
+    where: { email: adminEmail },
+    update: {},
+    create: {
+      email: adminEmail,
+      fullName: 'Dev Admin',
+      password: hash
+    }
+  });
+
+  // assign role
+  try {
+    await prisma.userRole.create({ data: { userId: adminUser.id, roleId: adminRole.id } });
+  } catch (e) {
+    // ignore duplicate assignment
+  }
+
+  console.log('Seeding completed. Dev admin:', adminEmail);
 }
 
-seed().catch(e => { console.error(e); process.exit(1); }).finally(async () => { await prisma.$disconnect(); });
+main()
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });
