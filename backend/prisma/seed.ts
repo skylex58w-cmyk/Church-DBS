@@ -21,7 +21,9 @@ async function main() {
     { name: 'finance.record', description: 'Record financial transactions' },
     { name: 'finance.approve', description: 'Approve financial transactions' },
     { name: 'reports.export', description: 'Export reports' },
-    { name: 'pastoral.view', description: 'Access pastoral records (sensitive)' }
+    { name: 'pastoral.view', description: 'Access pastoral records (sensitive)' },
+    { name: 'users.manage', description: 'Manage users and roles' },
+    { name: 'roles.manage', description: 'Manage roles and role permissions' }
   ];
 
   for (const p of permissions) {
@@ -29,26 +31,30 @@ async function main() {
       where: { name: p.name },
       update: {},
       create: p
+    }).catch((e) => {
+      // ignore unique/other transient errors during iterative development
     });
   }
 
-  const [adminRole, adminRoleCreated] = await prisma.role.upsert({
+  const adminRole = await prisma.role.upsert({
     where: { name: 'Super Administrator' },
     update: {},
     create: { name: 'Super Administrator', description: 'Full access to the system' }
-  }).then(r => [r, true]);
+  });
 
   // attach all permissions to admin role
   const allPerms = await prisma.permission.findMany();
   for (const perm of allPerms) {
-    await prisma.rolePermission.upsert({
-      where: { id: 0 },
-      update: {},
-      create: {
-        roleId: adminRole.id,
-        permissionId: perm.id
-      }
-    }).catch(() => {});
+    try {
+      await prisma.rolePermission.create({
+        data: {
+          roleId: adminRole.id,
+          permissionId: perm.id
+        }
+      });
+    } catch (e) {
+      // ignore duplicates
+    }
   }
 
   // create a dev admin user if none exists
@@ -67,14 +73,11 @@ async function main() {
   });
 
   // assign role
-  await prisma.userRole.upsert({
-    where: { id: 0 },
-    update: {},
-    create: {
-      userId: adminUser.id,
-      roleId: adminRole.id
-    }
-  }).catch(() => {});
+  try {
+    await prisma.userRole.create({ data: { userId: adminUser.id, roleId: adminRole.id } });
+  } catch (e) {
+    // ignore duplicate assignment
+  }
 
   console.log('Seeding completed. Dev admin:', adminEmail);
 }
