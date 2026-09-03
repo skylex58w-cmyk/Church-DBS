@@ -1,0 +1,28 @@
+{
+  "name": "church-dbs-backend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "start:dev": "ts-node-dev --respawn --transpile-only src/main.ts",
+    "start:prod": "node dist/main.js",
+    "build": "tsc -p tsconfig.build.json",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev"
+  },
+  "dependencies": {
+    "@prisma/client": "4.20.0",
+    "bcrypt": "5.1.0",
+    "class-transformer": "0.5.1",
+    "class-validator": "0.14.0",
+    "express": "4.18.2",
+    "jsonwebtoken": "9.0.0",
+    "nestjs-prisma": "1.0.0",
+    "reflect-metadata": "0.1.13",
+    "tslib": "2.5.0"
+  },
+  "devDependencies": {
+    "prisma": "4.20.0",
+    "ts-node-dev": "2.0.0",
+    "typescript": "5.1.6"
+  }
+}
