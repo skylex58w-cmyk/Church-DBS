@@ -2,10 +2,14 @@ import express from 'express';
 import { json } from 'body-parser';
 import { createServer } from 'http';
 import { appRouter } from './routes';
+import { registerAdminRoutes } from './routes/registerAdminRoutes';
 
 const app = express();
 app.use(json());
 app.use('/api/v1', appRouter);
+
+// Register admin routes (RBAC admin endpoints)
+registerAdminRoutes(app);
 
 const port = process.env.PORT || 3000;
 createServer(app).listen(port, () => {
