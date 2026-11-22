@@ -1,6 +1,7 @@
 name: Generate backend npm lockfile
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - chore/generate-backend-lockfile
