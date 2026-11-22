@@ -15,12 +15,17 @@
     "class-transformer": "0.5.1",
     "class-validator": "0.14.0",
     "express": "4.18.2",
+    "express-validator": "7.2.1",
     "jsonwebtoken": "9.0.0",
     "nestjs-prisma": "1.0.0",
     "reflect-metadata": "0.1.13",
     "tslib": "2.5.0"
   },
   "devDependencies": {
+    "@types/bcrypt": "5.0.2",
+    "@types/express": "4.17.21",
+    "@types/jsonwebtoken": "9.0.9",
+    "@types/node": "20.17.30",
     "prisma": "4.16.2",
     "ts-node-dev": "2.0.0",
     "typescript": "5.1.6"
