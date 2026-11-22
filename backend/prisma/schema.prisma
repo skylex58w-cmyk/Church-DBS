@@ -9,12 +9,12 @@ datasource db {
 
 // Core application models (minimal set included for RBAC integration)
 model User {
-  id        Int       @id @default(autoincrement())
-  email     String    @unique
-  fullName  String?
-  password  String
-  createdAt DateTime  @default(now())
-  roles     UserRole[]
+  id           Int        @id @default(autoincrement())
+  email        String     @unique
+  fullName     String?
+  passwordHash String
+  createdAt    DateTime   @default(now())
+  roles        UserRole[]
 }
 
 model Branch {
@@ -26,19 +26,19 @@ model Branch {
 
 // RBAC models
 model Role {
-  id           Int              @id @default(autoincrement())
-  name         String           @unique
-  description  String?
-  createdAt    DateTime         @default(now())
+  id             Int              @id @default(autoincrement())
+  name           String           @unique
+  description    String?
+  createdAt      DateTime         @default(now())
   rolePermission RolePermission[]
-  userRole     UserRole[]
+  userRole       UserRole[]
 }
 
 model Permission {
-  id          Int              @id @default(autoincrement())
-  name        String           @unique
-  description String?
-  createdAt   DateTime         @default(now())
+  id             Int              @id @default(autoincrement())
+  name           String           @unique
+  description    String?
+  createdAt      DateTime         @default(now())
   rolePermission RolePermission[]
 }
 
