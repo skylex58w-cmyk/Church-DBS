@@ -68,7 +68,7 @@ async function main() {
     create: {
       email: adminEmail,
       fullName: 'Dev Admin',
-      password: hash
+      passwordHash: hash
     }
   });
 
