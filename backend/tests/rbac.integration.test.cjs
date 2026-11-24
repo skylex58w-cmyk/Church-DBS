@@ -75,6 +75,7 @@ before(async () => {
   });
 
   const app = express();
+  app.use(express.json());
   app.use('/users', usersRouter);
   app.get('/branches/:branchId/resource', requirePermission(permissionName), (req, res) => {
     res.json({ success: true, branchId: req.user.branchId });
