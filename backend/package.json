@@ -10,7 +10,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:seed": "ts-node prisma/seed.ts",
-    "prisma:validate": "prisma validate"
+    "prisma:validate": "prisma validate",
+    "test:integration": "npm run build && node --test tests/*.test.cjs"
   },
   "dependencies": {
     "@prisma/client": "4.16.2",
