@@ -15,7 +15,7 @@ const emailGlobal = `global-${suffix}@example.test`;
 const emailBranch = `branch-${suffix}@example.test`;
 const permissionName = `test.read.${suffix}`;
 const manageRolesPermissionName = 'roles.manage';
-let targetUser;
+let targetUser;\nlet otherBranchUser;
 let assignableRole;
 let globalGrantRole;\nlet elevatedBranchRole;\nlet elevatedPermission;
 let globalUser;
@@ -53,7 +53,7 @@ before(async () => {
   branchUser = await prisma.user.create({
     data: { email: emailBranch, passwordHash: 'not-used-in-this-test' },
   });
-  targetUser = await prisma.user.create({ data: { email: `target-${suffix}@example.test`, passwordHash: 'not-used-in-this-test' } });
+  targetUser = await prisma.user.create({ data: { email: `target-${suffix}@example.test`, passwordHash: 'not-used-in-this-test' } });\n  otherBranchUser = await prisma.user.create({ data: { email: `other-branch-${suffix}@example.test`, passwordHash: 'not-used-in-this-test' } });\n  await prisma.userRole.create({ data: { userId: otherBranchUser.id, roleId: branchRole.id, branchId: branchB.id } });
   assignableRole = await prisma.role.create({ data: { name: `Assignable Role ${suffix}` } });
   globalGrantRole = await prisma.role.create({ data: { name: `Global Grant Role ${suffix}` } });\n  elevatedBranchRole = await prisma.role.create({ data: { name: `Elevated Branch Role ${suffix}` } });
   await prisma.rolePermission.create({ data: { roleId: globalGrantRole.id, permissionId: manageRolesPermission.id } });\n  elevatedPermission = await prisma.permission.create({ data: { name: `test.elevated.${suffix}` } });\n  await prisma.rolePermission.create({ data: { roleId: elevatedBranchRole.id, permissionId: elevatedPermission.id, branchId: branchA.id } });
@@ -92,7 +92,7 @@ after(async () => {
   if (server) await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   if (globalUser) await prisma.user.delete({ where: { id: globalUser.id } });
   if (branchUser) await prisma.user.delete({ where: { id: branchUser.id } });
-  if (targetUser) await prisma.user.delete({ where: { id: targetUser.id } });
+  if (targetUser) await prisma.user.delete({ where: { id: targetUser.id } });\n  if (otherBranchUser) await prisma.user.delete({ where: { id: otherBranchUser.id } });
   if (assignableRole) await prisma.role.delete({ where: { id: assignableRole.id } });
   if (globalGrantRole) await prisma.role.delete({ where: { id: globalGrantRole.id } });\n  if (elevatedBranchRole) await prisma.role.delete({ where: { id: elevatedBranchRole.id } });\n  await prisma.permission.deleteMany({ where: { name: `test.elevated.${suffix}` } });
   await prisma.role.deleteMany({ where: { name: { in: [`Global Test Role ${suffix}`, `Branch Test Role ${suffix}`] } } });
@@ -138,6 +138,31 @@ describe('requirePermission PostgreSQL integration', () => {
   it('rejects malformed branch identifiers', async () => {
     const response = await get('/branches/not-a-number/resource', tokenFor(globalUser));
     assert.equal(response.status, 400);
+  });
+
+  it('limits a branch administrator user list to global and active-branch assignments', async () => {
+    const response = await get('/users', tokenFor(branchUser), { 'x-branch-id': String(branchA.id) });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    const ids = body.data.map((user) => user.id);
+    assert.ok(ids.includes(branchUser.id));
+    assert.ok(!ids.includes(otherBranchUser.id));
+    assert.ok(!ids.includes(globalUser.id));
+  });
+
+  it('limits a branch administrator role list to global and active-branch grants', async () => {
+    const response = await get('/admin/roles', tokenFor(branchUser), { 'x-branch-id': String(branchA.id) });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    const names = body.data.map((role) => role.name);
+    assert.ok(names.includes(`Branch Test Role ${suffix}`));
+    assert.ok(!names.includes(`Global Test Role ${suffix}`));
+    assert.ok(!names.includes(`Global Grant Role ${suffix}`));
+    for (const role of body.data) {
+      for (const grant of role.rolePermission) {
+        assert.ok(grant.branchId === null || grant.branchId === branchA.id);
+      }
+    }
   });
 
   it('allows a global role manager to assign a global role', async () => {
