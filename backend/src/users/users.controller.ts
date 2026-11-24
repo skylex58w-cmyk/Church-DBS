@@ -101,8 +101,8 @@ router.post(
     }
 
     try {
-      if (req.user.branchId !== null && await svc.roleHasGrantsOutsideBranch(roleId, req.user.branchId)) {
-        return res.status(403).json({ success: false, error: { code: 'ROLE_SCOPE_FORBIDDEN', message: 'A branch administrator may only assign roles whose permissions are confined to the active branch' } });
+      if (!await svc.roleGrantsWithinActorPermissions(roleId, branchId, req.user.permissions)) {
+        return res.status(403).json({ success: false, error: { code: 'ROLE_SCOPE_FORBIDDEN', message: 'You cannot assign a role containing permissions outside your own access' } });
       }
       if (!await svc.roleAssignmentTargetsExist(userId, roleId, branchId)) {
         return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'User, role, or branch was not found' } });
