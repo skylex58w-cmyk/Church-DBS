@@ -67,6 +67,9 @@ jobs:
       - name: Compile backend
         run: npm run build
 
+      - name: Run RBAC PostgreSQL integration tests
+        run: npm run test:integration
+
       - name: Commit lockfile
         working-directory: .
         run: |
