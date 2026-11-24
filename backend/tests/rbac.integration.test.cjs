@@ -17,7 +17,7 @@ const permissionName = `test.read.${suffix}`;
 const manageRolesPermissionName = 'roles.manage';
 let targetUser;
 let assignableRole;
-let globalGrantRole;
+let globalGrantRole;\nlet elevatedBranchRole;
 let globalUser;
 let branchUser;
 let branchA;
@@ -55,8 +55,8 @@ before(async () => {
   });
   targetUser = await prisma.user.create({ data: { email: `target-${suffix}@example.test`, passwordHash: 'not-used-in-this-test' } });
   assignableRole = await prisma.role.create({ data: { name: `Assignable Role ${suffix}` } });
-  globalGrantRole = await prisma.role.create({ data: { name: `Global Grant Role ${suffix}` } });
-  await prisma.rolePermission.create({ data: { roleId: globalGrantRole.id, permissionId: manageRolesPermission.id } });
+  globalGrantRole = await prisma.role.create({ data: { name: `Global Grant Role ${suffix}` } });\n  elevatedBranchRole = await prisma.role.create({ data: { name: `Elevated Branch Role ${suffix}` } });
+  await prisma.rolePermission.create({ data: { roleId: globalGrantRole.id, permissionId: manageRolesPermission.id } });\n  const elevatedPermission = await prisma.permission.create({ data: { name: `test.elevated.${suffix}` } });\n  await prisma.rolePermission.create({ data: { roleId: elevatedBranchRole.id, permissionId: elevatedPermission.id, branchId: branchA.id } });
 
   await prisma.rolePermission.createMany({ data: [
     { roleId: globalRole.id, permissionId: permission.id },
@@ -94,7 +94,7 @@ after(async () => {
   if (branchUser) await prisma.user.delete({ where: { id: branchUser.id } });
   if (targetUser) await prisma.user.delete({ where: { id: targetUser.id } });
   if (assignableRole) await prisma.role.delete({ where: { id: assignableRole.id } });
-  if (globalGrantRole) await prisma.role.delete({ where: { id: globalGrantRole.id } });
+  if (globalGrantRole) await prisma.role.delete({ where: { id: globalGrantRole.id } });\n  if (elevatedBranchRole) await prisma.role.delete({ where: { id: elevatedBranchRole.id } });\n  await prisma.permission.deleteMany({ where: { name: `test.elevated.${suffix}` } });
   await prisma.role.deleteMany({ where: { name: { in: [`Global Test Role ${suffix}`, `Branch Test Role ${suffix}`] } } });
   await prisma.permission.deleteMany({ where: { name: permissionName } });
   // Keep the shared roles.manage permission because the seed catalogue may own it.
@@ -162,6 +162,14 @@ describe('requirePermission PostgreSQL integration', () => {
     const response = await fetch(`${baseUrl}/users/${targetUser.id}/roles`, {
       method: 'POST', headers: { authorization: `Bearer ${tokenFor(branchUser)}`, 'x-branch-id': String(branchA.id), 'content-type': 'application/json' },
       body: JSON.stringify({ roleId: globalGrantRole.id, branchId: branchA.id }),
+    });
+    assert.equal(response.status, 403);
+  });
+
+  it('denies a branch role manager from delegating a branch permission they do not hold', async () => {
+    const response = await fetch(`${baseUrl}/users/${targetUser.id}/roles`, {
+      method: 'POST', headers: { authorization: `Bearer ${tokenFor(branchUser)}`, 'x-branch-id': String(branchA.id), 'content-type': 'application/json' },
+      body: JSON.stringify({ roleId: elevatedBranchRole.id, branchId: branchA.id }),
     });
     assert.equal(response.status, 403);
   });
