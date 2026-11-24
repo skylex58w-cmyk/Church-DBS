@@ -4,7 +4,7 @@ const jwt = require('jsonwebtoken');
 const { PrismaClient } = require('@prisma/client');
 const express = require('express');
 const { requirePermission } = require('../dist/rbac/requirePermission');
-const usersRouter = require('../dist/users/users.controller').default;
+const usersRouter = require('../dist/users/users.controller').default;\nconst adminRouter = require('../dist/routes/admin.permissions').default;
 
 const prisma = new PrismaClient();
 const secret = 'integration-test-secret-that-is-at-least-32-characters';
@@ -17,7 +17,7 @@ const permissionName = `test.read.${suffix}`;
 const manageRolesPermissionName = 'roles.manage';
 let targetUser;
 let assignableRole;
-let globalGrantRole;\nlet elevatedBranchRole;
+let globalGrantRole;\nlet elevatedBranchRole;\nlet elevatedPermission;
 let globalUser;
 let branchUser;
 let branchA;
@@ -56,7 +56,7 @@ before(async () => {
   targetUser = await prisma.user.create({ data: { email: `target-${suffix}@example.test`, passwordHash: 'not-used-in-this-test' } });
   assignableRole = await prisma.role.create({ data: { name: `Assignable Role ${suffix}` } });
   globalGrantRole = await prisma.role.create({ data: { name: `Global Grant Role ${suffix}` } });\n  elevatedBranchRole = await prisma.role.create({ data: { name: `Elevated Branch Role ${suffix}` } });
-  await prisma.rolePermission.create({ data: { roleId: globalGrantRole.id, permissionId: manageRolesPermission.id } });\n  const elevatedPermission = await prisma.permission.create({ data: { name: `test.elevated.${suffix}` } });\n  await prisma.rolePermission.create({ data: { roleId: elevatedBranchRole.id, permissionId: elevatedPermission.id, branchId: branchA.id } });
+  await prisma.rolePermission.create({ data: { roleId: globalGrantRole.id, permissionId: manageRolesPermission.id } });\n  elevatedPermission = await prisma.permission.create({ data: { name: `test.elevated.${suffix}` } });\n  await prisma.rolePermission.create({ data: { roleId: elevatedBranchRole.id, permissionId: elevatedPermission.id, branchId: branchA.id } });
 
   await prisma.rolePermission.createMany({ data: [
     { roleId: globalRole.id, permissionId: permission.id },
@@ -76,7 +76,7 @@ before(async () => {
 
   const app = express();
   app.use(express.json());
-  app.use('/users', usersRouter);
+  app.use('/users', usersRouter);\n  app.use('/admin', adminRouter);
   app.get('/branches/:branchId/resource', requirePermission(permissionName), (req, res) => {
     res.json({ success: true, branchId: req.user.branchId });
   });
@@ -170,6 +170,14 @@ describe('requirePermission PostgreSQL integration', () => {
     const response = await fetch(`${baseUrl}/users/${targetUser.id}/roles`, {
       method: 'POST', headers: { authorization: `Bearer ${tokenFor(branchUser)}`, 'x-branch-id': String(branchA.id), 'content-type': 'application/json' },
       body: JSON.stringify({ roleId: elevatedBranchRole.id, branchId: branchA.id }),
+    });
+    assert.equal(response.status, 403);
+  });
+
+  it('denies a branch role manager from granting a permission they do not hold', async () => {
+    const response = await fetch(`${baseUrl}/admin/roles/${assignableRole.id}/permissions`, {
+      method: 'POST', headers: { authorization: `Bearer ${tokenFor(branchUser)}`, 'x-branch-id': String(branchA.id), 'content-type': 'application/json' },
+      body: JSON.stringify({ permissionId: elevatedPermission.id, branchId: branchA.id }),
     });
     assert.equal(response.status, 403);
   });
