@@ -5,24 +5,55 @@ import { Request, Response, NextFunction } from 'express';
 const prisma = new PrismaClient();
 
 interface AuthenticatedRequest extends Request {
-  user?: any;
+  user?: {
+    id: number;
+    email: string;
+    branchId: number | null;
+    permissions: string[];
+  };
+}
+
+function jwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret || secret.length < 32) {
+    throw new Error('JWT_SECRET must be configured and contain at least 32 characters');
+  }
+  return secret;
+}
+
+function requestedBranchId(req: Request): number | null | undefined {
+  const raw = req.params.branchId ?? req.header('x-branch-id');
+  if (raw === undefined) return null;
+  if (!/^\\d+$/.test(raw)) return undefined;
+  const id = Number(raw);
+  return Number.isSafeInteger(id) && id > 0 ? id : undefined;
 }
 
 export function requirePermission(permissionName: string) {
   return async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
-      const auth = req.headers.authorization?.split(' ')[1];
-      if (!auth) {
+      const authorization = req.header('authorization');
+      const [scheme, token, extra] = authorization?.trim().split(/\\s+/) ?? [];
+      if (scheme?.toLowerCase() !== 'bearer' || !token || extra) {
         return res.status(401).json({
           success: false,
-          error: { code: 'UNAUTHORIZED', message: 'Missing token' },
+          error: { code: 'UNAUTHORIZED', message: 'A valid bearer token is required' },
         });
       }
 
-      const payload = jwt.verify(auth, process.env.JWT_SECRET || 'dev_jwt_secret');
-      const subject = typeof payload === 'string' ? undefined : payload.sub;
-      const userId = Number(subject);
+      let payload: jwt.JwtPayload;
+      try {
+        const verified = jwt.verify(token, jwtSecret(), { algorithms: ['HS256'] });
+        if (typeof verified === 'string' || !verified.sub) throw new Error('Invalid token payload');
+        payload = verified;
+      } catch {
+        return res.status(401).json({
+          success: false,
+          error: { code: 'UNAUTHORIZED', message: 'Invalid or expired token' },
+        });
+      }
 
+      const userId = Number(payload.sub);
       if (!Number.isSafeInteger(userId) || userId <= 0) {
         return res.status(401).json({
           success: false,
@@ -30,14 +61,39 @@ export function requirePermission(permissionName: string) {
         });
       }
 
+      const branchId = requestedBranchId(req);
+      if (branchId === undefined) {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'INVALID_BRANCH', message: 'Branch ID must be a positive integer' },
+        });
+      }
+      if (branchId !== null) {
+        const branch = await prisma.branch.findUnique({ where: { id: branchId }, select: { id: true } });
+        if (!branch) {
+          return res.status(404).json({
+            success: false,
+            error: { code: 'BRANCH_NOT_FOUND', message: 'The requested branch does not exist' },
+          });
+        }
+      }
+
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        include: {
+        select: {
+          id: true,
+          email: true,
           roles: {
-            include: {
+            select: {
+              branchId: true,
               role: {
-                include: {
-                  rolePermission: { include: { permission: true } },
+                select: {
+                  rolePermission: {
+                    select: {
+                      branchId: true,
+                      permission: { select: { name: true } },
+                    },
+                  },
                 },
               },
             },
@@ -52,40 +108,41 @@ export function requirePermission(permissionName: string) {
         });
       }
 
-      // NOTE: branch-scope enforcement is deliberately handled in the RBAC phase.
-      const permissionSet = new Set<string>();
-      const scopedPermissions: Array<{ name: string; branchId?: number }> = [];
+      const granted = new Set<string>();
+      for (const assignment of user.roles) {
+        const assignmentMatches = branchId === null
+          ? assignment.branchId === null
+          : assignment.branchId === null || assignment.branchId === branchId;
+        if (!assignmentMatches) continue;
 
-      for (const userRole of user.roles) {
-        for (const rolePermission of userRole.role.rolePermission) {
-          permissionSet.add(rolePermission.permission.name);
-          scopedPermissions.push({
-            name: rolePermission.permission.name,
-            branchId: rolePermission.branchId ?? userRole.branchId ?? undefined,
-          });
+        for (const grant of assignment.role.rolePermission) {
+          const grantMatches = branchId === null
+            ? grant.branchId === null
+            : grant.branchId === null || grant.branchId === branchId;
+          if (grantMatches) granted.add(grant.permission.name);
         }
       }
 
-      if (!permissionSet.has(permissionName)) {
+      if (!granted.has(permissionName)) {
         return res.status(403).json({
           success: false,
-          error: { code: 'FORBIDDEN', message: 'Insufficient permission' },
+          error: { code: 'FORBIDDEN', message: 'Insufficient permission for the requested scope' },
         });
       }
 
       req.user = {
         id: user.id,
         email: user.email,
-        permissions: Array.from(permissionSet),
-        scopes: scopedPermissions,
+        branchId,
+        permissions: Array.from(granted),
       };
-
       return next();
     } catch (err: unknown) {
-      if (err instanceof jwt.TokenExpiredError) {
-        return res.status(401).json({
+      if (err instanceof Error && err.message.startsWith('JWT_SECRET')) {
+        console.error(err.message);
+        return res.status(500).json({
           success: false,
-          error: { code: 'UNAUTHORIZED', message: 'Token expired' },
+          error: { code: 'SERVER_CONFIGURATION_ERROR', message: 'Authentication is not configured' },
         });
       }
       console.error('RBAC middleware error', err);
