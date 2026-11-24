@@ -52,17 +52,21 @@ before(async () => {
   branchUser = await prisma.user.create({
     data: { email: emailBranch, passwordHash: 'not-used-in-this-test' },
   });
+  targetUser = await prisma.user.create({ data: { email: `target-${suffix}@example.test`, passwordHash: 'not-used-in-this-test' } });
+  assignableRole = await prisma.role.create({ data: { name: `Assignable Role ${suffix}` } });
 
-  await prisma.rolePermission.create({
-    data: { roleId: globalRole.id, permissionId: permission.id },
-  });
+  await prisma.rolePermission.createMany({ data: [
+    { roleId: globalRole.id, permissionId: permission.id },
+    { roleId: globalRole.id, permissionId: manageRolesPermission.id },
+  ] });
   await prisma.userRole.create({
     data: { userId: globalUser.id, roleId: globalRole.id },
   });
 
-  await prisma.rolePermission.create({
-    data: { roleId: branchRole.id, permissionId: permission.id, branchId: branchA.id },
-  });
+  await prisma.rolePermission.createMany({ data: [
+    { roleId: branchRole.id, permissionId: permission.id, branchId: branchA.id },
+    { roleId: branchRole.id, permissionId: manageRolesPermission.id, branchId: branchA.id },
+  ] });
   await prisma.userRole.create({
     data: { userId: branchUser.id, roleId: branchRole.id, branchId: branchA.id },
   });
@@ -129,5 +133,40 @@ describe('requirePermission PostgreSQL integration', () => {
   it('rejects malformed branch identifiers', async () => {
     const response = await get('/branches/not-a-number/resource', tokenFor(globalUser));
     assert.equal(response.status, 400);
+  });
+
+  it('allows a global role manager to assign a global role', async () => {
+    const response = await fetch(`${baseUrl}/users/${targetUser.id}/roles`, {
+      method: 'POST', headers: { authorization: `Bearer ${tokenFor(globalUser)}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ roleId: assignableRole.id }),
+    });
+    assert.equal(response.status, 201);
+    const assignment = await prisma.userRole.findFirst({ where: { userId: targetUser.id, roleId: assignableRole.id, branchId: null } });
+    assert.ok(assignment);
+  });
+
+  it('allows a branch role manager to assign a role in its own branch', async () => {
+    const response = await fetch(`${baseUrl}/users/${targetUser.id}/roles`, {
+      method: 'POST', headers: { authorization: `Bearer ${tokenFor(branchUser)}`, 'x-branch-id': String(branchA.id), 'content-type': 'application/json' },
+      body: JSON.stringify({ roleId: assignableRole.id, branchId: branchA.id }),
+    });
+    assert.equal(response.status, 201);
+  });
+
+  it('denies a branch role manager from assigning a role to another branch', async () => {
+    const response = await fetch(`${baseUrl}/users/${targetUser.id}/roles`, {
+      method: 'POST', headers: { authorization: `Bearer ${tokenFor(branchUser)}`, 'x-branch-id': String(branchA.id), 'content-type': 'application/json' },
+      body: JSON.stringify({ roleId: assignableRole.id, branchId: branchB.id }),
+    });
+    assert.equal(response.status, 403);
+  });
+
+  it('allows revoking an assignment at the same branch scope', async () => {
+    const response = await fetch(`${baseUrl}/users/${targetUser.id}/roles/${assignableRole.id}?branchId=${branchA.id}`, {
+      method: 'DELETE', headers: { authorization: `Bearer ${tokenFor(branchUser)}`, 'x-branch-id': String(branchA.id) },
+    });
+    assert.equal(response.status, 200);
+    const assignment = await prisma.userRole.findFirst({ where: { userId: targetUser.id, roleId: assignableRole.id, branchId: branchA.id } });
+    assert.equal(assignment, null);
   });
 });
