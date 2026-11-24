@@ -87,6 +87,14 @@ router.post(
         });
       }
 
+      // Administrators may delegate only permissions they already possess at this scope.
+      if (!req.user.permissions.includes(permission.name)) {
+        return res.status(403).json({
+          success: false,
+          error: { code: 'PERMISSION_DELEGATION_FORBIDDEN', message: 'You cannot grant a permission outside your own access' },
+        });
+      }
+
       const existing = await prisma.rolePermission.findFirst({
         where: { roleId, permissionId, branchId },
         select: { id: true },
