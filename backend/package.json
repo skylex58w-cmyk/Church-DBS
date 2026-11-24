@@ -17,7 +17,6 @@
     "express": "4.18.2",
     "express-validator": "7.2.1",
     "jsonwebtoken": "9.0.0",
-    "nestjs-prisma": "1.0.0",
     "reflect-metadata": "0.1.13",
     "tslib": "2.5.0"
   },
