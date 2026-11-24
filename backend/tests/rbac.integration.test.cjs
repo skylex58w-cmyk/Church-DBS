@@ -17,6 +17,7 @@ const permissionName = `test.read.${suffix}`;
 const manageRolesPermissionName = 'roles.manage';
 let targetUser;
 let assignableRole;
+let globalGrantRole;
 let globalUser;
 let branchUser;
 let branchA;
@@ -54,6 +55,8 @@ before(async () => {
   });
   targetUser = await prisma.user.create({ data: { email: `target-${suffix}@example.test`, passwordHash: 'not-used-in-this-test' } });
   assignableRole = await prisma.role.create({ data: { name: `Assignable Role ${suffix}` } });
+  globalGrantRole = await prisma.role.create({ data: { name: `Global Grant Role ${suffix}` } });
+  await prisma.rolePermission.create({ data: { roleId: globalGrantRole.id, permissionId: manageRolesPermission.id } });
 
   await prisma.rolePermission.createMany({ data: [
     { roleId: globalRole.id, permissionId: permission.id },
@@ -90,6 +93,7 @@ after(async () => {
   if (branchUser) await prisma.user.delete({ where: { id: branchUser.id } });
   if (targetUser) await prisma.user.delete({ where: { id: targetUser.id } });
   if (assignableRole) await prisma.role.delete({ where: { id: assignableRole.id } });
+  if (globalGrantRole) await prisma.role.delete({ where: { id: globalGrantRole.id } });
   await prisma.role.deleteMany({ where: { name: { in: [`Global Test Role ${suffix}`, `Branch Test Role ${suffix}`] } } });
   await prisma.permission.deleteMany({ where: { name: permissionName } });
   // Keep the shared roles.manage permission because the seed catalogue may own it.
@@ -151,6 +155,14 @@ describe('requirePermission PostgreSQL integration', () => {
       body: JSON.stringify({ roleId: assignableRole.id, branchId: branchA.id }),
     });
     assert.equal(response.status, 201);
+  });
+
+  it('denies a branch role manager from assigning a role with global permission grants', async () => {
+    const response = await fetch(`${baseUrl}/users/${targetUser.id}/roles`, {
+      method: 'POST', headers: { authorization: `Bearer ${tokenFor(branchUser)}`, 'x-branch-id': String(branchA.id), 'content-type': 'application/json' },
+      body: JSON.stringify({ roleId: globalGrantRole.id, branchId: branchA.id }),
+    });
+    assert.equal(response.status, 403);
   });
 
   it('denies a branch role manager from assigning a role to another branch', async () => {
