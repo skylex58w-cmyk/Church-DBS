@@ -4,8 +4,14 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 export default class UsersService {
-  async findAll() {
-    return prisma.user.findMany({ select: { id: true, email: true, createdAt: true } });
+  async findAll(branchId?: number | null) {
+    return prisma.user.findMany({
+      where: branchId === undefined || branchId === null
+        ? undefined
+        : { roles: { some: { OR: [{ branchId: null }, { branchId }] } } },
+      select: { id: true, email: true, createdAt: true },
+      orderBy: { id: 'asc' },
+    });
   }
 
   async create(email: string, password: string) {
