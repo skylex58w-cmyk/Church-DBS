@@ -64,6 +64,9 @@ jobs:
       - name: Apply migrations to clean PostgreSQL
         run: npm run prisma:migrate:deploy
 
+      - name: Build bcrypt native module
+        run: npm rebuild bcrypt --no-audit --no-fund
+
       - name: Compile backend
         run: npm run build
 
