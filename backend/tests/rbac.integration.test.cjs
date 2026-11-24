@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const { PrismaClient } = require('@prisma/client');
 const express = require('express');
 const { requirePermission } = require('../dist/rbac/requirePermission');
+const usersRouter = require('../dist/users/users.controller').default;
 
 const prisma = new PrismaClient();
 const secret = 'integration-test-secret-that-is-at-least-32-characters';
@@ -13,6 +14,9 @@ const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 const emailGlobal = `global-${suffix}@example.test`;
 const emailBranch = `branch-${suffix}@example.test`;
 const permissionName = `test.read.${suffix}`;
+const manageRolesPermissionName = 'roles.manage';
+let targetUser;
+let assignableRole;
 let globalUser;
 let branchUser;
 let branchA;
@@ -38,6 +42,7 @@ before(async () => {
   branchA = await prisma.branch.create({ data: { name: `Test Branch A ${suffix}` } });
   branchB = await prisma.branch.create({ data: { name: `Test Branch B ${suffix}` } });
   const permission = await prisma.permission.create({ data: { name: permissionName } });
+  const manageRolesPermission = await prisma.permission.upsert({ where: { name: manageRolesPermissionName }, update: {}, create: { name: manageRolesPermissionName } });
   const globalRole = await prisma.role.create({ data: { name: `Global Test Role ${suffix}` } });
   const branchRole = await prisma.role.create({ data: { name: `Branch Test Role ${suffix}` } });
 
@@ -63,6 +68,7 @@ before(async () => {
   });
 
   const app = express();
+  app.use('/users', usersRouter);
   app.get('/branches/:branchId/resource', requirePermission(permissionName), (req, res) => {
     res.json({ success: true, branchId: req.user.branchId });
   });
@@ -78,8 +84,11 @@ after(async () => {
   if (server) await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   if (globalUser) await prisma.user.delete({ where: { id: globalUser.id } });
   if (branchUser) await prisma.user.delete({ where: { id: branchUser.id } });
+  if (targetUser) await prisma.user.delete({ where: { id: targetUser.id } });
+  if (assignableRole) await prisma.role.delete({ where: { id: assignableRole.id } });
   await prisma.role.deleteMany({ where: { name: { in: [`Global Test Role ${suffix}`, `Branch Test Role ${suffix}`] } } });
   await prisma.permission.deleteMany({ where: { name: permissionName } });
+  // Keep the shared roles.manage permission because the seed catalogue may own it.
   if (branchA) await prisma.branch.delete({ where: { id: branchA.id } });
   if (branchB) await prisma.branch.delete({ where: { id: branchB.id } });
   await prisma.$disconnect();
