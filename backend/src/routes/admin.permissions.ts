@@ -55,7 +55,13 @@ router.post(
       });
     }
 
-    const actorBranchId = req.user?.branchId ?? null;
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        error: { code: 'UNAUTHORIZED', message: 'Authenticated administrator context is missing' },
+      });
+    }
+    const actorBranchId = req.user.branchId;
     // A branch-scoped administrator may only grant permissions within that same branch.
     // Only a global administrator can create global grants or grants for another branch.
     if (actorBranchId !== null && branchId !== actorBranchId) {
