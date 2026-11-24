@@ -17,6 +17,14 @@ export default class UsersService {
     return prisma.user.findUnique({ where: { email } });
   }
 
+  async roleHasGrantsOutsideBranch(roleId: number, branchId: number) {
+    const grant = await prisma.rolePermission.findFirst({
+      where: { roleId, OR: [{ branchId: null }, { branchId: { not: branchId } }] },
+      select: { id: true },
+    });
+    return Boolean(grant);
+  }
+
   async assignRole(userId: number, roleId: number, branchId: number | null) {
     return prisma.userRole.create({ data: { userId, roleId, branchId } });
   }
