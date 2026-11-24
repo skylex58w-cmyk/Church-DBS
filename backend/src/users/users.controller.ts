@@ -31,7 +31,9 @@ function assignmentScope(req: AdminRequest, requestedBranchId: unknown): number 
 
 router.get('/', requirePermission('users.manage') as any, async (req: AdminRequest, res) => {
   try {
-    if (!req.user) {\n      return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Administrator context is missing' } });\n    }\n    const users = await svc.findAll(req.user.branchId);
+    if (!req.user) {
+      return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Administrator context is missing' } });
+    }\n    const users = await svc.findAll(req.user.branchId);
     return res.json({ success: true, data: users });
   } catch {
     return res.status(500).json({
