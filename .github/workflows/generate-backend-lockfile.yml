@@ -12,6 +12,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: backend-lockfile-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   backend-foundation:
     runs-on: ubuntu-latest
@@ -51,5 +55,7 @@ jobs:
             echo "No lockfile changes to commit."
           else
             git commit -m "chore(backend): add npm lockfile"
+            git fetch origin "$GITHUB_REF_NAME"
+            git rebase "origin/$GITHUB_REF_NAME"
             git push
           fi
