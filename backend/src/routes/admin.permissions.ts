@@ -21,10 +21,21 @@ router.get('/permissions', requirePermission('roles.manage') as any, async (_req
   }
 });
 
-router.get('/roles', requirePermission('roles.manage') as any, async (_req, res) => {
+router.get('/roles', requirePermission('roles.manage') as any, async (req: AdminRequest, res) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Administrator context is missing' } });
+    }
+    const branchId = req.user.branchId;
+    const scopeFilter = branchId === null ? undefined : { OR: [{ branchId: null }, { branchId }] };
     const roles = await prisma.role.findMany({
-      include: { rolePermission: { include: { permission: true, branch: true } } },
+      where: scopeFilter ? { rolePermission: { some: scopeFilter } } : undefined,
+      include: {
+        rolePermission: {
+          where: scopeFilter,
+          include: { permission: true, branch: true },
+        },
+      },
       orderBy: { name: 'asc' },
     });
     return res.json({ success: true, data: roles });
@@ -74,7 +85,7 @@ router.post(
     try {
       const [role, permission, branch] = await Promise.all([
         prisma.role.findUnique({ where: { id: roleId }, select: { id: true } }),
-        prisma.permission.findUnique({ where: { id: permissionId }, select: { id: true } }),
+        prisma.permission.findUnique({ where: { id: permissionId }, select: { id: true, name: true } }),
         branchId === null
           ? Promise.resolve(true)
           : prisma.branch.findUnique({ where: { id: branchId }, select: { id: true } }),
