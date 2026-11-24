@@ -24,7 +24,7 @@ function jwtSecret(): string {
 function requestedBranchId(req: Request): number | null | undefined {
   const raw = req.params.branchId ?? req.header('x-branch-id');
   if (raw === undefined) return null;
-  if (!/^\\d+$/.test(raw)) return undefined;
+  if (!/^\d+$/.test(raw)) return undefined;
   const id = Number(raw);
   return Number.isSafeInteger(id) && id > 0 ? id : undefined;
 }
@@ -33,7 +33,7 @@ export function requirePermission(permissionName: string) {
   return async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const authorization = req.header('authorization');
-      const [scheme, token, extra] = authorization?.trim().split(/\\s+/) ?? [];
+      const [scheme, token, extra] = authorization?.trim().split(/\s+/) ?? [];
       if (scheme?.toLowerCase() !== 'bearer' || !token || extra) {
         return res.status(401).json({
           success: false,
