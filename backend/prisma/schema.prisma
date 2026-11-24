@@ -7,7 +7,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Core application models (minimal set included for RBAC integration)
 model User {
   id           Int        @id @default(autoincrement())
   email        String     @unique
@@ -18,13 +17,14 @@ model User {
 }
 
 model Branch {
-  id        Int      @id @default(autoincrement())
-  name      String
-  code      String?  @unique
-  createdAt DateTime @default(now())
+  id              Int              @id @default(autoincrement())
+  name            String
+  code            String?          @unique
+  createdAt       DateTime         @default(now())
+  userRoles       UserRole[]
+  rolePermissions RolePermission[]
 }
 
-// RBAC models
 model Role {
   id             Int              @id @default(autoincrement())
   name           String           @unique
@@ -44,19 +44,28 @@ model Permission {
 
 model RolePermission {
   id           Int        @id @default(autoincrement())
-  role         Role       @relation(fields: [roleId], references: [id])
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
   roleId       Int
-  permission   Permission @relation(fields: [permissionId], references: [id])
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
   permissionId Int
-  // Optional scope (e.g., branch-scoped permission)
+  branch       Branch?    @relation(fields: [branchId], references: [id], onDelete: Cascade)
   branchId     Int?
+
+  // Partial unique indexes in migration.sql enforce one global or branch-scoped grant.
+  @@index([roleId, permissionId, branchId])
+  @@index([branchId])
 }
 
 model UserRole {
-  id       Int    @id @default(autoincrement())
-  user     User   @relation(fields: [userId], references: [id])
+  id       Int     @id @default(autoincrement())
+  user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId   Int
-  role     Role   @relation(fields: [roleId], references: [id])
+  role     Role    @relation(fields: [roleId], references: [id], onDelete: Cascade)
   roleId   Int
-  branchId Int?   // optional branch scope for this user-role assignment
+  branch   Branch? @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  branchId Int?
+
+  // Partial unique indexes in migration.sql enforce one global or branch-scoped assignment.
+  @@index([userId, roleId, branchId])
+  @@index([branchId])
 }
