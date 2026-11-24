@@ -46,18 +46,15 @@ async function main() {
 
   const allPermissions = await prisma.permission.findMany({ select: { id: true } });
   for (const permission of allPermissions) {
-    await prisma.rolePermission.upsert({
-      where: { id: -1 },
-      update: {},
-      create: { roleId: adminRole.id, permissionId: permission.id },
-    }).catch(async (error: unknown) => {
-      // A duplicate is acceptable only when the exact global grant already exists.
-      const existing = await prisma.rolePermission.findFirst({
-        where: { roleId: adminRole.id, permissionId: permission.id, branchId: null },
-        select: { id: true },
-      });
-      if (!existing) throw error;
+    const existingGrant = await prisma.rolePermission.findFirst({
+      where: { roleId: adminRole.id, permissionId: permission.id, branchId: null },
+      select: { id: true },
     });
+    if (!existingGrant) {
+      await prisma.rolePermission.create({
+        data: { roleId: adminRole.id, permissionId: permission.id },
+      });
+    }
   }
 
   const passwordHash = await bcrypt.hash(adminPassword, 12);
