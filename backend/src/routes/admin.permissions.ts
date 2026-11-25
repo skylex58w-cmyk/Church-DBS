@@ -29,7 +29,7 @@ router.get('/roles', requirePermission('roles.manage') as any, async (req: Admin
     const branchId = req.user.branchId;
     const scopeFilter = branchId === null ? undefined : { OR: [{ branchId: null }, { branchId }] };
     const roles = await prisma.role.findMany({
-      where: scopeFilter ? { rolePermission: { some: scopeFilter } } : undefined,
+      where: branchId === null ? undefined : { rolePermission: { some: { branchId } } },
       include: {
         rolePermission: {
           where: scopeFilter,
