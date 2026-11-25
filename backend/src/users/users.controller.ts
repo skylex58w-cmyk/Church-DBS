@@ -33,7 +33,8 @@ router.get('/', requirePermission('users.manage') as any, async (req: AdminReque
   try {
     if (!req.user) {
       return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Administrator context is missing' } });
-    }\n    const users = await svc.findAll(req.user.branchId);
+    }
+    const users = await svc.findAll(req.user.branchId);
     return res.json({ success: true, data: users });
   } catch {
     return res.status(500).json({
