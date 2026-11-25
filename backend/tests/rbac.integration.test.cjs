@@ -156,7 +156,7 @@ describe('requirePermission PostgreSQL integration', () => {
     assert.equal(response.status, 400);
   });
 
-  it('limits a branch administrator user list to global and active-branch assignments', async () => {
+  it('limits a branch administrator user list to active-branch assignments only', async () => {
     const response = await get('/users', tokenFor(branchUser), { 'x-branch-id': String(branchA.id) });
     assert.equal(response.status, 200);
     const body = await response.json();
