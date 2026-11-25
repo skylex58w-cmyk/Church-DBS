@@ -33,10 +33,12 @@ export default class UsersService {
 
   async roleGrantsWithinActorPermissions(roleId: number, branchId: number | null, actorPermissions: string[]) {
     const grants = await prisma.rolePermission.findMany({
-      where: branchId === null ? { roleId, branchId: null } : { roleId, OR: [{ branchId: null }, { branchId }] },
-      select: { permission: { select: { name: true } } },
+      where: { roleId },
+      select: { branchId: true, permission: { select: { name: true } } },
     });
-    return grants.every((grant) => actorPermissions.includes(grant.permission.name));
+    return grants.every((grant) =>
+      grant.branchId === branchId && actorPermissions.includes(grant.permission.name)
+    );
   }
 
   async assignRole(userId: number, roleId: number, branchId: number | null) {
