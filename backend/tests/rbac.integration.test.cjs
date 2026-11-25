@@ -16,6 +16,7 @@ const emailGlobal = `global-${suffix}@example.test`;
 const emailBranch = `branch-${suffix}@example.test`;
 const permissionName = `test.read.${suffix}`;
 const manageRolesPermissionName = 'roles.manage';
+const manageUsersPermissionName = 'users.manage';
 let targetUser;
 let otherBranchUser;
 let assignableRole;
@@ -48,6 +49,7 @@ before(async () => {
   branchB = await prisma.branch.create({ data: { name: `Test Branch B ${suffix}` } });
   const permission = await prisma.permission.create({ data: { name: permissionName } });
   const manageRolesPermission = await prisma.permission.upsert({ where: { name: manageRolesPermissionName }, update: {}, create: { name: manageRolesPermissionName } });
+  const manageUsersPermission = await prisma.permission.upsert({ where: { name: manageUsersPermissionName }, update: {}, create: { name: manageUsersPermissionName } });
   const globalRole = await prisma.role.create({ data: { name: `Global Test Role ${suffix}` } });
   const branchRole = await prisma.role.create({ data: { name: `Branch Test Role ${suffix}` } });
 
@@ -78,6 +80,7 @@ before(async () => {
   await prisma.rolePermission.createMany({ data: [
     { roleId: branchRole.id, permissionId: permission.id, branchId: branchA.id },
     { roleId: branchRole.id, permissionId: manageRolesPermission.id, branchId: branchA.id },
+    { roleId: branchRole.id, permissionId: manageUsersPermission.id, branchId: branchA.id },
   ] });
   await prisma.userRole.create({
     data: { userId: branchUser.id, roleId: branchRole.id, branchId: branchA.id },
