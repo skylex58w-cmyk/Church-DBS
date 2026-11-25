@@ -8,7 +8,7 @@ export default class UsersService {
     return prisma.user.findMany({
       where: branchId === undefined || branchId === null
         ? undefined
-        : { roles: { some: { OR: [{ branchId: null }, { branchId }] } } },
+        : { roles: { some: { branchId } } },
       select: { id: true, email: true, createdAt: true },
       orderBy: { id: 'asc' },
     });
