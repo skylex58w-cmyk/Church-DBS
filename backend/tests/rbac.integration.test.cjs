@@ -4,7 +4,8 @@ const jwt = require('jsonwebtoken');
 const { PrismaClient } = require('@prisma/client');
 const express = require('express');
 const { requirePermission } = require('../dist/rbac/requirePermission');
-const usersRouter = require('../dist/users/users.controller').default;\nconst adminRouter = require('../dist/routes/admin.permissions').default;
+const usersRouter = require('../dist/users/users.controller').default;
+const adminRouter = require('../dist/routes/admin.permissions').default;
 
 const prisma = new PrismaClient();
 const secret = 'integration-test-secret-that-is-at-least-32-characters';
@@ -15,9 +16,12 @@ const emailGlobal = `global-${suffix}@example.test`;
 const emailBranch = `branch-${suffix}@example.test`;
 const permissionName = `test.read.${suffix}`;
 const manageRolesPermissionName = 'roles.manage';
-let targetUser;\nlet otherBranchUser;
+let targetUser;
+let otherBranchUser;
 let assignableRole;
-let globalGrantRole;\nlet elevatedBranchRole;\nlet elevatedPermission;
+let globalGrantRole;
+let elevatedBranchRole;
+let elevatedPermission;
 let globalUser;
 let branchUser;
 let branchA;
@@ -53,10 +57,15 @@ before(async () => {
   branchUser = await prisma.user.create({
     data: { email: emailBranch, passwordHash: 'not-used-in-this-test' },
   });
-  targetUser = await prisma.user.create({ data: { email: `target-${suffix}@example.test`, passwordHash: 'not-used-in-this-test' } });\n  otherBranchUser = await prisma.user.create({ data: { email: `other-branch-${suffix}@example.test`, passwordHash: 'not-used-in-this-test' } });\n  await prisma.userRole.create({ data: { userId: otherBranchUser.id, roleId: branchRole.id, branchId: branchB.id } });
+  targetUser = await prisma.user.create({ data: { email: `target-${suffix}@example.test`, passwordHash: 'not-used-in-this-test' } });
+  otherBranchUser = await prisma.user.create({ data: { email: `other-branch-${suffix}@example.test`, passwordHash: 'not-used-in-this-test' } });
+  await prisma.userRole.create({ data: { userId: otherBranchUser.id, roleId: branchRole.id, branchId: branchB.id } });
   assignableRole = await prisma.role.create({ data: { name: `Assignable Role ${suffix}` } });
-  globalGrantRole = await prisma.role.create({ data: { name: `Global Grant Role ${suffix}` } });\n  elevatedBranchRole = await prisma.role.create({ data: { name: `Elevated Branch Role ${suffix}` } });
-  await prisma.rolePermission.create({ data: { roleId: globalGrantRole.id, permissionId: manageRolesPermission.id } });\n  elevatedPermission = await prisma.permission.create({ data: { name: `test.elevated.${suffix}` } });\n  await prisma.rolePermission.create({ data: { roleId: elevatedBranchRole.id, permissionId: elevatedPermission.id, branchId: branchA.id } });
+  globalGrantRole = await prisma.role.create({ data: { name: `Global Grant Role ${suffix}` } });
+  elevatedBranchRole = await prisma.role.create({ data: { name: `Elevated Branch Role ${suffix}` } });
+  await prisma.rolePermission.create({ data: { roleId: globalGrantRole.id, permissionId: manageRolesPermission.id } });
+  elevatedPermission = await prisma.permission.create({ data: { name: `test.elevated.${suffix}` } });
+  await prisma.rolePermission.create({ data: { roleId: elevatedBranchRole.id, permissionId: elevatedPermission.id, branchId: branchA.id } });
 
   await prisma.rolePermission.createMany({ data: [
     { roleId: globalRole.id, permissionId: permission.id },
@@ -76,7 +85,8 @@ before(async () => {
 
   const app = express();
   app.use(express.json());
-  app.use('/users', usersRouter);\n  app.use('/admin', adminRouter);
+  app.use('/users', usersRouter);
+  app.use('/admin', adminRouter);
   app.get('/branches/:branchId/resource', requirePermission(permissionName), (req, res) => {
     res.json({ success: true, branchId: req.user.branchId });
   });
@@ -92,9 +102,12 @@ after(async () => {
   if (server) await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   if (globalUser) await prisma.user.delete({ where: { id: globalUser.id } });
   if (branchUser) await prisma.user.delete({ where: { id: branchUser.id } });
-  if (targetUser) await prisma.user.delete({ where: { id: targetUser.id } });\n  if (otherBranchUser) await prisma.user.delete({ where: { id: otherBranchUser.id } });
+  if (targetUser) await prisma.user.delete({ where: { id: targetUser.id } });
+  if (otherBranchUser) await prisma.user.delete({ where: { id: otherBranchUser.id } });
   if (assignableRole) await prisma.role.delete({ where: { id: assignableRole.id } });
-  if (globalGrantRole) await prisma.role.delete({ where: { id: globalGrantRole.id } });\n  if (elevatedBranchRole) await prisma.role.delete({ where: { id: elevatedBranchRole.id } });\n  await prisma.permission.deleteMany({ where: { name: `test.elevated.${suffix}` } });
+  if (globalGrantRole) await prisma.role.delete({ where: { id: globalGrantRole.id } });
+  if (elevatedBranchRole) await prisma.role.delete({ where: { id: elevatedBranchRole.id } });
+  await prisma.permission.deleteMany({ where: { name: `test.elevated.${suffix}` } });
   await prisma.role.deleteMany({ where: { name: { in: [`Global Test Role ${suffix}`, `Branch Test Role ${suffix}`] } } });
   await prisma.permission.deleteMany({ where: { name: permissionName } });
   // Keep the shared roles.manage permission because the seed catalogue may own it.
