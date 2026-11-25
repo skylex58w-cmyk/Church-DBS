@@ -14,6 +14,7 @@ model User {
   passwordHash String
   createdAt    DateTime   @default(now())
   roles        UserRole[]
+  refreshTokens RefreshToken[]
 }
 
 model Branch {
@@ -68,4 +69,21 @@ model UserRole {
   // Partial unique indexes in migration.sql enforce one global or branch-scoped assignment.
   @@index([userId, roleId, branchId])
   @@index([branchId])
+}
+
+
+model RefreshToken {
+  id                   Int       @id @default(autoincrement())
+  tokenHash            String    @unique
+  familyId             String
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId               Int
+  expiresAt            DateTime
+  createdAt            DateTime  @default(now())
+  revokedAt            DateTime?
+  replacedByTokenHash  String?
+
+  @@index([userId, revokedAt])
+  @@index([familyId])
+  @@index([expiresAt])
 }
