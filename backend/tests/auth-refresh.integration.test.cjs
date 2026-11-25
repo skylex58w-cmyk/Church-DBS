@@ -110,6 +110,47 @@ describe('refresh-token session lifecycle', () => {
     assert.equal(refresh.status, 401);
   });
 
+  it('rejects and revokes an expired refresh token', async () => {
+    const login = await post('/auth/login', { email, password });
+    assert.equal(login.status, 200);
+    const refreshToken = (await login.json()).data.refreshToken;
+    const hash = tokenHash(refreshToken);
+    await prisma.refreshToken.update({
+      where: { tokenHash: hash },
+      data: { expiresAt: new Date(Date.now() - 1000) },
+    });
+
+    const response = await post('/auth/refresh', { refreshToken });
+    assert.equal(response.status, 401);
+    assert.equal((await response.json()).error.code, 'REFRESH_TOKEN_EXPIRED');
+    const record = await prisma.refreshToken.findUnique({ where: { tokenHash: hash } });
+    assert.ok(record.revokedAt);
+  });
+
+  it('allows only one concurrent refresh and revokes the family after the competing replay', async () => {
+    const login = await post('/auth/login', { email, password });
+    assert.equal(login.status, 200);
+    const refreshToken = (await login.json()).data.refreshToken;
+    const original = await prisma.refreshToken.findUnique({
+      where: { tokenHash: tokenHash(refreshToken) },
+    });
+
+    const responses = await Promise.all([
+      post('/auth/refresh', { refreshToken }),
+      post('/auth/refresh', { refreshToken }),
+    ]);
+    const statuses = responses.map((response) => response.status).sort();
+    assert.deepEqual(statuses, [200, 401]);
+
+    const rejected = responses.find((response) => response.status === 401);
+    assert.equal((await rejected.json()).error.code, 'REFRESH_TOKEN_REUSE');
+    const family = await prisma.refreshToken.findMany({
+      where: { familyId: original.familyId },
+    });
+    assert.ok(family.length >= 2);
+    assert.ok(family.every((record) => record.revokedAt), 'concurrent reuse must revoke every token in the family');
+  });
+
   it('rejects malformed refresh-token input', async () => {
     const response = await post('/auth/refresh', { refreshToken: 'short' });
     assert.equal(response.status, 400);
