@@ -99,7 +99,7 @@ describe('refresh-token session lifecycle', () => {
     assert.ok(oldRecord.revokedAt);
     assert.equal(oldRecord.replacedByTokenHash, tokenHash(secondRefreshToken));
 
-    const replay = await post('/auth/refresh', { refreshToken: firstRefreshToken });
+    const replay = await postCookie('/auth/refresh', firstRefreshToken);
     assert.equal(replay.status, 401);
     assert.equal((await replay.json()).error.code, 'REFRESH_TOKEN_REUSE');
 
@@ -119,7 +119,7 @@ describe('refresh-token session lifecycle', () => {
 
     const record = await prisma.refreshToken.findUnique({ where: { tokenHash: tokenHash(refreshToken) } });
     assert.ok(record.revokedAt);
-    const repeatedLogout = await post('/auth/logout', { refreshToken });
+    const repeatedLogout = await postCookie('/auth/logout', refreshToken);
     assert.equal(repeatedLogout.status, 200);
 
     const refresh = await postCookie('/auth/refresh', refreshToken);
@@ -136,7 +136,7 @@ describe('refresh-token session lifecycle', () => {
       data: { expiresAt: new Date(Date.now() - 1000) },
     });
 
-    const response = await post('/auth/refresh', { refreshToken });
+    const response = await postCookie('/auth/refresh', refreshToken);
     assert.equal(response.status, 401);
     assert.equal((await response.json()).error.code, 'REFRESH_TOKEN_EXPIRED');
     const record = await prisma.refreshToken.findUnique({ where: { tokenHash: hash } });
@@ -146,7 +146,7 @@ describe('refresh-token session lifecycle', () => {
   it('allows only one concurrent refresh and revokes the family after the competing replay', async () => {
     const login = await post('/auth/login', { email, password });
     assert.equal(login.status, 200);
-    const refreshToken = (await login.json()).data.refreshToken;
+    const refreshToken = cookieFrom(login);
     const original = await prisma.refreshToken.findUnique({
       where: { tokenHash: tokenHash(refreshToken) },
     });
