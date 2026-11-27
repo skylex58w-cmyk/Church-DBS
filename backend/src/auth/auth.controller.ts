@@ -10,6 +10,47 @@ const router = Router();
 const svc = new UsersService();
 const prisma = new PrismaClient();
 
+const REFRESH_COOKIE = 'chms_refresh';
+const REFRESH_COOKIE_PATH = '/api/v1/auth';
+
+function cookieOptions() {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax' as const,
+    path: REFRESH_COOKIE_PATH,
+  };
+}
+
+function setRefreshCookie(res: any, token: string) {
+  res.cookie(REFRESH_COOKIE, token, {
+    ...cookieOptions(),
+    maxAge: refreshTokenTtlMs(),
+  });
+}
+
+function clearRefreshCookie(res: any) {
+  res.clearCookie(REFRESH_COOKIE, cookieOptions());
+}
+
+function readRefreshCookie(req: any): string | undefined {
+  const header = req.headers.cookie;
+  if (typeof header !== 'string') return undefined;
+  const entry = header.split(';').map((part: string) => part.trim())
+    .find((part: string) => part.startsWith(REFRESH_COOKIE + '='));
+  if (!entry) return undefined;
+  try { return decodeURIComponent(entry.slice(REFRESH_COOKIE.length + 1)); }
+  catch { return undefined; }
+}
+
+function trustedCookieRequest(req: any): boolean {
+  const origin = req.get('origin');
+  const configured = (process.env.AUTH_ALLOWED_ORIGINS || '')
+    .split(',').map((value: string) => value.trim()).filter(Boolean);
+  // Cookie-authenticated endpoints require an explicit browser Origin and allowlist.
+  return typeof origin === 'string' && configured.includes(origin);
+}
+
 function jwtSecret(): string {
   const secret = process.env.JWT_SECRET;
   if (!secret || secret.length < 32) {
@@ -106,9 +147,10 @@ router.post(
         },
       });
 
+      setRefreshCookie(res, refreshToken);
       return res.json({
         success: true,
-        data: { ...access, refreshToken, refreshTokenExpiresIn: Number(process.env.REFRESH_TOKEN_TTL_DAYS || 30) * 86400 },
+        data: { ...access, refreshTokenExpiresIn: Number(process.env.REFRESH_TOKEN_TTL_DAYS || 30) * 86400 },
       });
     } catch (err: unknown) {
       if (err instanceof Error && (err.message.startsWith('JWT_SECRET') || err.message.startsWith('REFRESH_TOKEN_TTL_DAYS'))) {
@@ -125,7 +167,10 @@ router.post(
 );
 
 router.post('/refresh', async (req, res) => {
-  const presentedToken = req.body?.refreshToken;
+  if (!trustedCookieRequest(req)) {
+    return res.status(403).json({ success: false, error: { code: 'ORIGIN_NOT_ALLOWED', message: 'Request origin is not allowed' } });
+  }
+  const presentedToken = readRefreshCookie(req);
   if (!validRefreshToken(presentedToken)) {
     return res.status(400).json({
       success: false,
@@ -205,13 +250,10 @@ router.post('/refresh', async (req, res) => {
     }
 
     const access = accessTokenFor(stored.user);
+    setRefreshCookie(res, nextRefreshToken);
     return res.json({
       success: true,
-      data: {
-        ...access,
-        refreshToken: nextRefreshToken,
-        refreshTokenExpiresIn: Math.floor(refreshTokenTtlMs() / 1000),
-      },
+      data: { ...access, refreshTokenExpiresIn: Math.floor(refreshTokenTtlMs() / 1000) },
     });
   } catch (err: unknown) {
     if (err instanceof Error && (err.message.startsWith('JWT_SECRET') || err.message.startsWith('REFRESH_TOKEN_TTL_DAYS'))) {
@@ -227,7 +269,10 @@ router.post('/refresh', async (req, res) => {
 });
 
 router.post('/logout', async (req, res) => {
-  const presentedToken = req.body?.refreshToken;
+  if (!trustedCookieRequest(req)) {
+    return res.status(403).json({ success: false, error: { code: 'ORIGIN_NOT_ALLOWED', message: 'Request origin is not allowed' } });
+  }
+  const presentedToken = readRefreshCookie(req);
   if (!validRefreshToken(presentedToken)) {
     return res.status(400).json({
       success: false,
@@ -241,6 +286,7 @@ router.post('/logout', async (req, res) => {
       data: { revokedAt: new Date() },
     });
     // Idempotent response avoids revealing whether a supplied token existed.
+    clearRefreshCookie(res);
     return res.json({ success: true, data: { loggedOut: true } });
   } catch (err) {
     console.error('Logout failed', err);
