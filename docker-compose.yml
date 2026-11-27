@@ -21,6 +21,7 @@ services:
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - JWT_SECRET=${JWT_SECRET}
+      - AUTH_ALLOWED_ORIGINS=${AUTH_ALLOWED_ORIGINS:-http://localhost:3001}
       - PORT=3000
     volumes:
       - ./backend:/usr/src/app
