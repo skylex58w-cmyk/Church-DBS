@@ -126,7 +126,27 @@ after(async () => {
 });
 
 describe('requirePermission PostgreSQL integration', () => {
-  it('lists all branches for a global branch viewer', async () => {\n    const response = await get('/branches', tokenFor(globalUser));\n    assert.equal(response.status, 200);\n    const body = await response.json();\n    assert.ok(body.data.some((branch) => branch.id === branchA.id));\n    assert.ok(body.data.some((branch) => branch.id === branchB.id));\n  });\n\n  it('limits a branch-scoped viewer to its active branch', async () => {\n    const response = await get('/branches', tokenFor(branchUser), { 'x-branch-id': String(branchA.id) });\n    assert.equal(response.status, 200);\n    const body = await response.json();\n    assert.deepEqual(body.data.map((branch) => branch.id), [branchA.id]);\n  });\n\n  it('denies a branch-scoped viewer from reading another branch', async () => {\n    const response = await get('/branches', tokenFor(branchUser), { 'x-branch-id': String(branchB.id) });\n    assert.equal(response.status, 403);\n  });\n\n  it('rejects requests without a bearer token', async () => {
+  it('lists all branches for a global branch viewer', async () => {
+    const response = await get('/branches', tokenFor(globalUser));
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.ok(body.data.some((branch) => branch.id === branchA.id));
+    assert.ok(body.data.some((branch) => branch.id === branchB.id));
+  });
+
+  it('limits a branch-scoped viewer to its active branch', async () => {
+    const response = await get('/branches', tokenFor(branchUser), { 'x-branch-id': String(branchA.id) });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.deepEqual(body.data.map((branch) => branch.id), [branchA.id]);
+  });
+
+  it('denies a branch-scoped viewer from reading another branch', async () => {
+    const response = await get('/branches', tokenFor(branchUser), { 'x-branch-id': String(branchB.id) });
+    assert.equal(response.status, 403);
+  });
+
+  it('rejects requests without a bearer token', async () => {
     const response = await get(`/branches/${branchA.id}/resource`);
     assert.equal(response.status, 401);
   });
