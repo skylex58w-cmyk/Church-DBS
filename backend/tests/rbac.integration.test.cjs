@@ -7,6 +7,7 @@ const { requirePermission } = require('../dist/rbac/requirePermission');
 const usersRouter = require('../dist/users/users.controller').default;
 const adminRouter = require('../dist/routes/admin.permissions').default;
 const branchesRouter = require('../dist/branches/branches.controller').default;
+const membersRouter = require('../dist/members/members.controller').default;
 
 const prisma = new PrismaClient();
 const secret = 'integration-test-secret-that-is-at-least-32-characters';
@@ -19,6 +20,10 @@ const permissionName = `test.read.${suffix}`;
 const manageRolesPermissionName = 'roles.manage';
 const manageUsersPermissionName = 'users.manage';
 const viewBranchesPermissionName = 'branches.view';
+const memberPermissionNames = ['members.view', 'members.create', 'members.update'];
+let memberPermissions = [];
+let memberInA;
+let memberInB;
 let targetUser;
 let otherBranchUser;
 let assignableRole;
@@ -53,6 +58,7 @@ before(async () => {
   const manageRolesPermission = await prisma.permission.upsert({ where: { name: manageRolesPermissionName }, update: {}, create: { name: manageRolesPermissionName } });
   const manageUsersPermission = await prisma.permission.upsert({ where: { name: manageUsersPermissionName }, update: {}, create: { name: manageUsersPermissionName } });
   const viewBranchesPermission = await prisma.permission.upsert({ where: { name: viewBranchesPermissionName }, update: {}, create: { name: viewBranchesPermissionName } });
+  memberPermissions = await Promise.all(memberPermissionNames.map((name) => prisma.permission.upsert({ where: { name }, update: {}, create: { name } })));
   const globalRole = await prisma.role.create({ data: { name: `Global Test Role ${suffix}` } });
   const branchRole = await prisma.role.create({ data: { name: `Branch Test Role ${suffix}` } });
 
@@ -76,6 +82,7 @@ before(async () => {
     { roleId: globalRole.id, permissionId: permission.id },
     { roleId: globalRole.id, permissionId: manageRolesPermission.id },
     { roleId: globalRole.id, permissionId: viewBranchesPermission.id },
+    ...memberPermissions.map((permission) => ({ roleId: globalRole.id, permissionId: permission.id })),
   ] });
   await prisma.userRole.create({
     data: { userId: globalUser.id, roleId: globalRole.id },
@@ -86,16 +93,21 @@ before(async () => {
     { roleId: branchRole.id, permissionId: manageRolesPermission.id, branchId: branchA.id },
     { roleId: branchRole.id, permissionId: manageUsersPermission.id, branchId: branchA.id },
     { roleId: branchRole.id, permissionId: viewBranchesPermission.id, branchId: branchA.id },
+    ...memberPermissions.map((permission) => ({ roleId: branchRole.id, permissionId: permission.id, branchId: branchA.id })),
   ] });
   await prisma.userRole.create({
     data: { userId: branchUser.id, roleId: branchRole.id, branchId: branchA.id },
   });
+
+  memberInA = await prisma.member.create({ data: { branchId: branchA.id, firstName: 'Ada', lastName: 'BranchA' } });
+  memberInB = await prisma.member.create({ data: { branchId: branchB.id, firstName: 'Ben', lastName: 'BranchB' } });
 
   const app = express();
   app.use(express.json());
   app.use('/users', usersRouter);
   app.use('/admin', adminRouter);
   app.use('/branches', branchesRouter);
+  app.use('/members', membersRouter);
   app.get('/branches/:branchId/resource', requirePermission(permissionName), (req, res) => {
     res.json({ success: true, branchId: req.user.branchId });
   });
@@ -113,12 +125,15 @@ after(async () => {
   if (branchUser) await prisma.user.delete({ where: { id: branchUser.id } });
   if (targetUser) await prisma.user.delete({ where: { id: targetUser.id } });
   if (otherBranchUser) await prisma.user.delete({ where: { id: otherBranchUser.id } });
+  if (memberInA) await prisma.member.delete({ where: { id: memberInA.id } });
+  if (memberInB) await prisma.member.delete({ where: { id: memberInB.id } });
   if (assignableRole) await prisma.role.delete({ where: { id: assignableRole.id } });
   if (globalGrantRole) await prisma.role.delete({ where: { id: globalGrantRole.id } });
   if (elevatedBranchRole) await prisma.role.delete({ where: { id: elevatedBranchRole.id } });
   await prisma.permission.deleteMany({ where: { name: `test.elevated.${suffix}` } });
   await prisma.role.deleteMany({ where: { name: { in: [`Global Test Role ${suffix}`, `Branch Test Role ${suffix}`] } } });
   await prisma.permission.deleteMany({ where: { name: permissionName } });
+  await prisma.permission.deleteMany({ where: { name: { in: memberPermissionNames } } });
   // Keep the shared roles.manage permission because the seed catalogue may own it.
   if (branchA) await prisma.branch.delete({ where: { id: branchA.id } });
   if (branchB) await prisma.branch.delete({ where: { id: branchB.id } });
@@ -126,6 +141,42 @@ after(async () => {
 });
 
 describe('requirePermission PostgreSQL integration', () => {
+  it('lists only members belonging to the active branch', async () => {
+    const response = await get('/members', tokenFor(branchUser), { 'x-branch-id': String(branchA.id) });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.ok(body.data.some((member) => member.id === memberInA.id));
+    assert.ok(!body.data.some((member) => member.id === memberInB.id));
+  });
+
+  it('does not expose a member from another branch by ID', async () => {
+    const response = await get(`/members/${memberInB.id}`, tokenFor(branchUser), { 'x-branch-id': String(branchA.id) });
+    assert.equal(response.status, 404);
+  });
+
+  it('creates a member in the active branch regardless of submitted branchId', async () => {
+    const response = await fetch(`${baseUrl}/members`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${tokenFor(branchUser)}`, 'x-branch-id': String(branchA.id), 'content-type': 'application/json' },
+      body: JSON.stringify({ firstName: 'Grace', lastName: 'Hopper', branchId: branchB.id }),
+    });
+    assert.equal(response.status, 201);
+    const body = await response.json();
+    assert.equal(body.data.branchId, branchA.id);
+    await prisma.member.delete({ where: { id: body.data.id } });
+  });
+
+  it('prevents updating a member outside the active branch', async () => {
+    const response = await fetch(`${baseUrl}/members/${memberInB.id}`, {
+      method: 'PATCH',
+      headers: { authorization: `Bearer ${tokenFor(branchUser)}`, 'x-branch-id': String(branchA.id), 'content-type': 'application/json' },
+      body: JSON.stringify({ firstName: 'Tampered' }),
+    });
+    assert.equal(response.status, 404);
+    const unchanged = await prisma.member.findUnique({ where: { id: memberInB.id } });
+    assert.equal(unchanged.firstName, 'Ben');
+  });
+
   it('lists all branches for a global branch viewer', async () => {
     const response = await get('/branches', tokenFor(globalUser));
     assert.equal(response.status, 200);
