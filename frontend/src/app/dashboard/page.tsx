@@ -1,12 +1,37 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ProtectedRoute } from "@/components/protected-route";
 import { useAuth } from "@/components/auth-provider";
+import { apiRequest } from "@/lib/api";
+
+type CurrentUser = {
+  id: number;
+  email: string;
+  fullName: string | null;
+  roleAssignments: Array<{
+    branchId: number | null;
+    branch: { id: number; name: string; code: string | null } | null;
+    role: { id: number; name: string; description: string | null };
+  }>;
+};
 
 function DashboardContent() {
-  const { logout } = useAuth();
+  const { logout, accessToken } = useAuth();
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [profileError, setProfileError] = useState("");
+
+  useEffect(() => {
+    if (!accessToken) return;
+    let active = true;
+    apiRequest<CurrentUser>("/auth/me", { method: "GET" }, accessToken)
+      .then((user) => { if (active) setCurrentUser(user); })
+      .catch((error: unknown) => {
+        if (active) setProfileError(error instanceof Error ? error.message : "Unable to load account details.");
+      });
+    return () => { active = false; };
+  }, [accessToken]);
   const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
   const [error, setError] = useState("");
@@ -44,6 +69,28 @@ function DashboardContent() {
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-forest">Workspace</p>
         <h1 className="mt-3 text-3xl font-semibold tracking-tight">Dashboard</h1>
         <p className="mt-2 text-sm text-slate-500">Your secure church management session is active.</p>
+        {profileError && <p role="alert" className="mt-5 rounded-xl bg-amber-50 p-4 text-sm text-amber-800">{profileError}</p>}
+
+        <div className="mt-8 grid gap-5 md:grid-cols-2">
+          <section className="rounded-2xl border border-slate-200 bg-white p-6">
+            <h2 className="text-sm font-semibold text-slate-500">Signed-in account</h2>
+            <p className="mt-3 text-xl font-semibold">{currentUser?.fullName || "Account profile"}</p>
+            <p className="mt-1 text-sm text-slate-600">{currentUser?.email || (profileError ? "Profile unavailable" : "Loading account…")}</p>
+          </section>
+          <section className="rounded-2xl border border-slate-200 bg-white p-6">
+            <h2 className="text-sm font-semibold text-slate-500">Role assignments</h2>
+            {currentUser ? (currentUser.roleAssignments.length ? (
+              <ul className="mt-3 space-y-3">
+                {currentUser.roleAssignments.map((assignment) => (
+                  <li key={`${assignment.role.id}-${assignment.branchId ?? "global"}`} className="flex items-start justify-between gap-3 text-sm">
+                    <span className="font-medium">{assignment.role.name}</span>
+                    <span className="text-right text-slate-500">{assignment.branch?.name || "Global access"}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : <p className="mt-3 text-sm text-slate-500">No role assignments are currently attached to this account.</p>) : <p className="mt-3 text-sm text-slate-500">Loading assignments…</p>}
+          </section>
+        </div>
         {error && <p role="alert" className="mt-5 rounded-xl bg-amber-50 p-4 text-sm text-amber-800">{error}</p>}
 
         <div className="mt-8 rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm">
