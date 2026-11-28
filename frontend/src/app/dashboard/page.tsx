@@ -7,6 +7,7 @@ import { useAuth } from "@/components/auth-provider";
 import { apiRequest } from "@/lib/api";
 import { MemberManagement } from "@/components/member-management";
 import { AttendanceManagement } from "@/components/attendance-management";
+import { FinanceManagement } from "@/components/finance-management";
 
 type Branch = { id: number; name: string; code: string | null; createdAt: string };
 
@@ -173,10 +174,11 @@ function DashboardContent() {
 
         {accessToken && activeBranchId && <MemberManagement branchId={activeBranchId} accessToken={accessToken} />}
         {accessToken && activeBranchId && <AttendanceManagement branchId={activeBranchId} accessToken={accessToken} />}
+        {accessToken && activeBranchId && <FinanceManagement branchId={activeBranchId} accessToken={accessToken} />}
 
         <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-6">
-          <h2 className="text-lg font-semibold">Next implementation stage</h2>
-          <p className="mt-2 max-w-2xl text-sm leading-7 text-slate-600">Church data modules are not exposed in this dashboard yet. They will be added only after their API endpoints, branch isolation rules, and permission checks are implemented and tested.</p>
+          <h2 className="text-lg font-semibold">Branch-scoped workspace</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-7 text-slate-600">Member records, service attendance, and finance transactions are connected to the selected branch. Access to each operation is enforced by the API permissions and branch scope.</p>
         </div>
       </section>
     </main>
