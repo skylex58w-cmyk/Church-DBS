@@ -169,7 +169,7 @@ router.post(
 
 router.get('/me', async (req, res) => {
   const authorization = req.get('authorization') || '';
-  const [scheme, token, extra] = authorization.trim().split(/\\s+/);
+  const [scheme, token, extra] = authorization.trim().split(/\s+/);
   if (scheme?.toLowerCase() !== 'bearer' || !token || extra) {
     return res.status(401).json({
       success: false,
