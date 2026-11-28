@@ -6,6 +6,7 @@ const express = require('express');
 const { requirePermission } = require('../dist/rbac/requirePermission');
 const usersRouter = require('../dist/users/users.controller').default;
 const adminRouter = require('../dist/routes/admin.permissions').default;
+const branchesRouter = require('../dist/branches/branches.controller').default;
 
 const prisma = new PrismaClient();
 const secret = 'integration-test-secret-that-is-at-least-32-characters';
@@ -17,6 +18,7 @@ const emailBranch = `branch-${suffix}@example.test`;
 const permissionName = `test.read.${suffix}`;
 const manageRolesPermissionName = 'roles.manage';
 const manageUsersPermissionName = 'users.manage';
+const viewBranchesPermissionName = 'branches.view';
 let targetUser;
 let otherBranchUser;
 let assignableRole;
@@ -50,6 +52,7 @@ before(async () => {
   const permission = await prisma.permission.create({ data: { name: permissionName } });
   const manageRolesPermission = await prisma.permission.upsert({ where: { name: manageRolesPermissionName }, update: {}, create: { name: manageRolesPermissionName } });
   const manageUsersPermission = await prisma.permission.upsert({ where: { name: manageUsersPermissionName }, update: {}, create: { name: manageUsersPermissionName } });
+  const viewBranchesPermission = await prisma.permission.upsert({ where: { name: viewBranchesPermissionName }, update: {}, create: { name: viewBranchesPermissionName } });
   const globalRole = await prisma.role.create({ data: { name: `Global Test Role ${suffix}` } });
   const branchRole = await prisma.role.create({ data: { name: `Branch Test Role ${suffix}` } });
 
@@ -72,6 +75,7 @@ before(async () => {
   await prisma.rolePermission.createMany({ data: [
     { roleId: globalRole.id, permissionId: permission.id },
     { roleId: globalRole.id, permissionId: manageRolesPermission.id },
+    { roleId: globalRole.id, permissionId: viewBranchesPermission.id },
   ] });
   await prisma.userRole.create({
     data: { userId: globalUser.id, roleId: globalRole.id },
@@ -81,6 +85,7 @@ before(async () => {
     { roleId: branchRole.id, permissionId: permission.id, branchId: branchA.id },
     { roleId: branchRole.id, permissionId: manageRolesPermission.id, branchId: branchA.id },
     { roleId: branchRole.id, permissionId: manageUsersPermission.id, branchId: branchA.id },
+    { roleId: branchRole.id, permissionId: viewBranchesPermission.id, branchId: branchA.id },
   ] });
   await prisma.userRole.create({
     data: { userId: branchUser.id, roleId: branchRole.id, branchId: branchA.id },
@@ -90,6 +95,7 @@ before(async () => {
   app.use(express.json());
   app.use('/users', usersRouter);
   app.use('/admin', adminRouter);
+  app.use('/branches', branchesRouter);
   app.get('/branches/:branchId/resource', requirePermission(permissionName), (req, res) => {
     res.json({ success: true, branchId: req.user.branchId });
   });
@@ -120,7 +126,7 @@ after(async () => {
 });
 
 describe('requirePermission PostgreSQL integration', () => {
-  it('rejects requests without a bearer token', async () => {
+  it('lists all branches for a global branch viewer', async () => {\n    const response = await get('/branches', tokenFor(globalUser));\n    assert.equal(response.status, 200);\n    const body = await response.json();\n    assert.ok(body.data.some((branch) => branch.id === branchA.id));\n    assert.ok(body.data.some((branch) => branch.id === branchB.id));\n  });\n\n  it('limits a branch-scoped viewer to its active branch', async () => {\n    const response = await get('/branches', tokenFor(branchUser), { 'x-branch-id': String(branchA.id) });\n    assert.equal(response.status, 200);\n    const body = await response.json();\n    assert.deepEqual(body.data.map((branch) => branch.id), [branchA.id]);\n  });\n\n  it('denies a branch-scoped viewer from reading another branch', async () => {\n    const response = await get('/branches', tokenFor(branchUser), { 'x-branch-id': String(branchB.id) });\n    assert.equal(response.status, 403);\n  });\n\n  it('rejects requests without a bearer token', async () => {
     const response = await get(`/branches/${branchA.id}/resource`);
     assert.equal(response.status, 401);
   });
