@@ -25,6 +25,7 @@ model Branch {
   userRoles       UserRole[]
   rolePermissions RolePermission[]
   members         Member[]
+  attendanceSessions AttendanceSession[]
 }
 
 model Role {
@@ -93,6 +94,7 @@ model RefreshToken {
 model Member {
   id             Int      @id @default(autoincrement())
   branch         Branch   @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  attendanceRecords AttendanceRecord[]
   branchId       Int
   firstName      String
   lastName       String
@@ -111,4 +113,33 @@ model Member {
   @@index([branchId, lastName, firstName])
   @@index([branchId, membershipStatus])
   @@index([phone])
+}
+
+
+model AttendanceSession {
+  id          Int                @id @default(autoincrement())
+  branch      Branch             @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  branchId    Int
+  title       String
+  serviceDate DateTime           @db.Date
+  serviceType String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  records     AttendanceRecord[]
+
+  @@index([branchId, serviceDate])
+  @@index([branchId, serviceType, serviceDate])
+}
+
+model AttendanceRecord {
+  id        Int               @id @default(autoincrement())
+  session   AttendanceSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  sessionId Int
+  member    Member            @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  memberId  Int
+  status    String
+  markedAt  DateTime          @default(now())
+
+  @@unique([sessionId, memberId])
+  @@index([memberId])
 }
