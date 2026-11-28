@@ -38,6 +38,13 @@ async function postCookie(path, token) {
   });
 }
 
+async function get(path, accessToken) {
+  return fetch(`${baseUrl}${path}`, {
+    method: 'GET',
+    headers: { authorization: `Bearer ${accessToken}` },
+  });
+}
+
 async function post(path, body) {
   return fetch(`${baseUrl}${path}`, {
     method: 'POST',
@@ -84,6 +91,26 @@ describe('refresh-token session lifecycle', () => {
     assert.notEqual(stored.tokenHash, firstRefreshToken);
     assert.equal(stored.userId, user.id);
     assert.equal(stored.revokedAt, null);
+  });
+
+  it('returns only the authenticated user profile and role assignments', async () => {
+    const login = await post('/auth/login', { email, password });
+    assert.equal(login.status, 200);
+    const accessToken = (await login.json()).data.token;
+
+    const response = await get('/auth/me', accessToken);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.success, true);
+    assert.equal(body.data.id, user.id);
+    assert.equal(body.data.email, email);
+    assert.equal(Array.isArray(body.data.roleAssignments), true);
+    assert.equal(Object.hasOwn(body.data, 'passwordHash'), false);
+  });
+
+  it('rejects current-user requests without a valid bearer token', async () => {
+    const response = await get('/auth/me', '');
+    assert.equal(response.status, 401);
   });
 
   it('rotates a refresh token and rejects reuse while revoking the token family', async () => {
