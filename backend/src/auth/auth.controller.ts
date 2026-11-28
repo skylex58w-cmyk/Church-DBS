@@ -166,6 +166,87 @@ router.post(
   },
 );
 
+
+router.get('/me', async (req, res) => {
+  const authorization = req.get('authorization') || '';
+  const [scheme, token, extra] = authorization.trim().split(/\\s+/);
+  if (scheme?.toLowerCase() !== 'bearer' || !token || extra) {
+    return res.status(401).json({
+      success: false,
+      error: { code: 'UNAUTHORIZED', message: 'A valid bearer token is required' },
+    });
+  }
+
+  try {
+    const verified = jwt.verify(token, jwtSecret(), { algorithms: ['HS256'] });
+    if (typeof verified === 'string' || !verified.sub) {
+      return res.status(401).json({
+        success: false,
+        error: { code: 'UNAUTHORIZED', message: 'Invalid access token' },
+      });
+    }
+    const userId = Number(verified.sub);
+    if (!Number.isSafeInteger(userId) || userId <= 0) {
+      return res.status(401).json({
+        success: false,
+        error: { code: 'UNAUTHORIZED', message: 'Invalid access token subject' },
+      });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        roles: {
+          select: {
+            branchId: true,
+            branch: { select: { id: true, name: true, code: true } },
+            role: { select: { id: true, name: true, description: true } },
+          },
+          orderBy: [{ branchId: 'asc' }, { roleId: 'asc' }],
+        },
+      },
+    });
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: { code: 'UNAUTHORIZED', message: 'User account is no longer available' },
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        id: user.id,
+        email: user.email,
+        fullName: user.fullName,
+        roleAssignments: user.roles.map((assignment) => ({
+          branchId: assignment.branchId,
+          branch: assignment.branch,
+          role: assignment.role,
+        })),
+      },
+    });
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message.startsWith('JWT_SECRET')) {
+      return authConfigurationError(res);
+    }
+    if (err instanceof jwt.JsonWebTokenError || err instanceof jwt.TokenExpiredError) {
+      return res.status(401).json({
+        success: false,
+        error: { code: 'UNAUTHORIZED', message: 'Invalid or expired access token' },
+      });
+    }
+    console.error('Current-user lookup failed', err);
+    return res.status(500).json({
+      success: false,
+      error: { code: 'SERVER_ERROR', message: 'Unable to retrieve current user' },
+    });
+  }
+});
+
 router.post('/refresh', async (req, res) => {
   if (!trustedCookieRequest(req)) {
     return res.status(403).json({ success: false, error: { code: 'ORIGIN_NOT_ALLOWED', message: 'Request origin is not allowed' } });
