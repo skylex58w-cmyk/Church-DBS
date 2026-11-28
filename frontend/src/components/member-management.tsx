@@ -10,6 +10,10 @@ type Member = {
   middleName: string | null;
   phone: string | null;
   email: string | null;
+  gender: string | null;
+  dateOfBirth: string | null;
+  address: string | null;
+  maritalStatus: string | null;
   membershipStatus: "ACTIVE" | "INACTIVE" | "TRANSFERRED" | "DECEASED";
   joinedAt: string | null;
 };
@@ -20,12 +24,17 @@ type MemberForm = {
   middleName: string;
   phone: string;
   email: string;
+  gender: string;
+  dateOfBirth: string;
+  address: string;
+  maritalStatus: string;
   membershipStatus: Member["membershipStatus"];
   joinedAt: string;
 };
 
 const emptyForm: MemberForm = {
   firstName: "", lastName: "", middleName: "", phone: "", email: "",
+  gender: "", dateOfBirth: "", address: "", maritalStatus: "",
   membershipStatus: "ACTIVE", joinedAt: "",
 };
 
@@ -81,6 +90,10 @@ export function MemberManagement({ branchId, accessToken }: { branchId: string; 
       middleName: member.middleName || "",
       phone: member.phone || "",
       email: member.email || "",
+      gender: member.gender || "",
+      dateOfBirth: member.dateOfBirth ? member.dateOfBirth.slice(0, 10) : "",
+      address: member.address || "",
+      maritalStatus: member.maritalStatus || "",
       membershipStatus: member.membershipStatus,
       joinedAt: member.joinedAt ? member.joinedAt.slice(0, 10) : "",
     });
@@ -99,6 +112,10 @@ export function MemberManagement({ branchId, accessToken }: { branchId: string; 
       middleName: form.middleName.trim() || null,
       phone: form.phone.trim() || null,
       email: form.email.trim() || null,
+      gender: form.gender || null,
+      dateOfBirth: form.dateOfBirth || null,
+      address: form.address.trim() || null,
+      maritalStatus: form.maritalStatus || null,
       membershipStatus: form.membershipStatus,
       joinedAt: form.joinedAt || null,
     };
@@ -166,6 +183,22 @@ export function MemberManagement({ branchId, accessToken }: { branchId: string; 
             </label>
             <label className="text-sm font-medium">Email
               <input type="email" maxLength={254} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2" />
+            </label>
+            <label className="text-sm font-medium">Gender
+              <select value={form.gender} onChange={(e) => setForm({ ...form, gender: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2">
+                <option value="">Not specified</option><option value="MALE">Male</option><option value="FEMALE">Female</option><option value="OTHER">Other</option>
+              </select>
+            </label>
+            <label className="text-sm font-medium">Date of birth
+              <input type="date" value={form.dateOfBirth} onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2" />
+            </label>
+            <label className="text-sm font-medium">Marital status
+              <select value={form.maritalStatus} onChange={(e) => setForm({ ...form, maritalStatus: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2">
+                <option value="">Not specified</option><option value="SINGLE">Single</option><option value="MARRIED">Married</option><option value="WIDOWED">Widowed</option><option value="DIVORCED">Divorced</option>
+              </select>
+            </label>
+            <label className="text-sm font-medium sm:col-span-2 lg:col-span-3">Address
+              <textarea maxLength={500} rows={2} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2" />
             </label>
             <label className="text-sm font-medium">Date joined
               <input type="date" value={form.joinedAt} onChange={(e) => setForm({ ...form, joinedAt: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2" />
