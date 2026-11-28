@@ -8,6 +8,7 @@ const usersRouter = require('../dist/users/users.controller').default;
 const adminRouter = require('../dist/routes/admin.permissions').default;
 const branchesRouter = require('../dist/branches/branches.controller').default;
 const membersRouter = require('../dist/members/members.controller').default;
+const attendanceRouter = require('../dist/attendance/attendance.controller').default;
 
 const prisma = new PrismaClient();
 const secret = 'integration-test-secret-that-is-at-least-32-characters';
@@ -21,6 +22,10 @@ const manageRolesPermissionName = 'roles.manage';
 const manageUsersPermissionName = 'users.manage';
 const viewBranchesPermissionName = 'branches.view';
 const memberPermissionNames = ['members.view', 'members.create', 'members.update'];
+const attendancePermissionNames = ['attendance.view', 'attendance.create', 'attendance.update'];
+let attendancePermissions = [];
+let attendanceInA;
+let attendanceInB;
 let memberPermissions = [];
 let memberInA;
 let memberInB;
@@ -59,6 +64,7 @@ before(async () => {
   const manageUsersPermission = await prisma.permission.upsert({ where: { name: manageUsersPermissionName }, update: {}, create: { name: manageUsersPermissionName } });
   const viewBranchesPermission = await prisma.permission.upsert({ where: { name: viewBranchesPermissionName }, update: {}, create: { name: viewBranchesPermissionName } });
   memberPermissions = await Promise.all(memberPermissionNames.map((name) => prisma.permission.upsert({ where: { name }, update: {}, create: { name } })));
+  attendancePermissions = await Promise.all(attendancePermissionNames.map((name) => prisma.permission.upsert({ where: { name }, update: {}, create: { name } })));
   const globalRole = await prisma.role.create({ data: { name: `Global Test Role ${suffix}` } });
   const branchRole = await prisma.role.create({ data: { name: `Branch Test Role ${suffix}` } });
 
@@ -83,6 +89,7 @@ before(async () => {
     { roleId: globalRole.id, permissionId: manageRolesPermission.id },
     { roleId: globalRole.id, permissionId: viewBranchesPermission.id },
     ...memberPermissions.map((permission) => ({ roleId: globalRole.id, permissionId: permission.id })),
+    ...attendancePermissions.map((permission) => ({ roleId: globalRole.id, permissionId: permission.id })),
   ] });
   await prisma.userRole.create({
     data: { userId: globalUser.id, roleId: globalRole.id },
@@ -94,6 +101,7 @@ before(async () => {
     { roleId: branchRole.id, permissionId: manageUsersPermission.id, branchId: branchA.id },
     { roleId: branchRole.id, permissionId: viewBranchesPermission.id, branchId: branchA.id },
     ...memberPermissions.map((permission) => ({ roleId: branchRole.id, permissionId: permission.id, branchId: branchA.id })),
+    ...attendancePermissions.map((permission) => ({ roleId: branchRole.id, permissionId: permission.id, branchId: branchA.id })),
   ] });
   await prisma.userRole.create({
     data: { userId: branchUser.id, roleId: branchRole.id, branchId: branchA.id },
@@ -101,6 +109,8 @@ before(async () => {
 
   memberInA = await prisma.member.create({ data: { branchId: branchA.id, firstName: 'Ada', lastName: 'BranchA' } });
   memberInB = await prisma.member.create({ data: { branchId: branchB.id, firstName: 'Ben', lastName: 'BranchB' } });
+  attendanceInA = await prisma.attendanceSession.create({ data: { branchId: branchA.id, title: 'Sunday Service', serviceDate: new Date('2026-11-22') } });
+  attendanceInB = await prisma.attendanceSession.create({ data: { branchId: branchB.id, title: 'Sunday Service', serviceDate: new Date('2026-11-22') } });
 
   const app = express();
   app.use(express.json());
@@ -108,6 +118,7 @@ before(async () => {
   app.use('/admin', adminRouter);
   app.use('/branches', branchesRouter);
   app.use('/members', membersRouter);
+  app.use('/attendance', attendanceRouter);
   app.get('/branches/:branchId/resource', requirePermission(permissionName), (req, res) => {
     res.json({ success: true, branchId: req.user.branchId });
   });
@@ -125,6 +136,8 @@ after(async () => {
   if (branchUser) await prisma.user.delete({ where: { id: branchUser.id } });
   if (targetUser) await prisma.user.delete({ where: { id: targetUser.id } });
   if (otherBranchUser) await prisma.user.delete({ where: { id: otherBranchUser.id } });
+  if (attendanceInA) await prisma.attendanceSession.delete({ where: { id: attendanceInA.id } });
+  if (attendanceInB) await prisma.attendanceSession.delete({ where: { id: attendanceInB.id } });
   if (memberInA) await prisma.member.delete({ where: { id: memberInA.id } });
   if (memberInB) await prisma.member.delete({ where: { id: memberInB.id } });
   if (assignableRole) await prisma.role.delete({ where: { id: assignableRole.id } });
@@ -133,7 +146,7 @@ after(async () => {
   await prisma.permission.deleteMany({ where: { name: `test.elevated.${suffix}` } });
   await prisma.role.deleteMany({ where: { name: { in: [`Global Test Role ${suffix}`, `Branch Test Role ${suffix}`] } } });
   await prisma.permission.deleteMany({ where: { name: permissionName } });
-  await prisma.permission.deleteMany({ where: { name: { in: memberPermissionNames } } });
+  await prisma.permission.deleteMany({ where: { name: { in: [...memberPermissionNames, ...attendancePermissionNames] } } });
   // Keep the shared roles.manage permission because the seed catalogue may own it.
   if (branchA) await prisma.branch.delete({ where: { id: branchA.id } });
   if (branchB) await prisma.branch.delete({ where: { id: branchB.id } });
@@ -141,6 +154,42 @@ after(async () => {
 });
 
 describe('requirePermission PostgreSQL integration', () => {
+  it('lists only attendance sessions belonging to the active branch', async () => {
+    const response = await get('/attendance', tokenFor(branchUser), { 'x-branch-id': String(branchA.id) });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.ok(body.data.some((session) => session.id === attendanceInA.id));
+    assert.ok(!body.data.some((session) => session.id === attendanceInB.id));
+  });
+
+  it('does not expose an attendance session from another branch by ID', async () => {
+    const response = await get(`/attendance/${attendanceInB.id}`, tokenFor(branchUser), { 'x-branch-id': String(branchA.id) });
+    assert.equal(response.status, 404);
+  });
+
+  it('rejects marking attendance for a member from another branch', async () => {
+    const response = await fetch(`${baseUrl}/attendance/${attendanceInA.id}/records`, {
+      method: 'PUT',
+      headers: { authorization: `Bearer ${tokenFor(branchUser)}`, 'x-branch-id': String(branchA.id), 'content-type': 'application/json' },
+      body: JSON.stringify({ records: [{ memberId: memberInB.id, status: 'PRESENT' }] }),
+    });
+    assert.equal(response.status, 400);
+    const count = await prisma.attendanceRecord.count({ where: { sessionId: attendanceInA.id } });
+    assert.equal(count, 0);
+  });
+
+  it('records attendance for a member in the session branch', async () => {
+    const response = await fetch(`${baseUrl}/attendance/${attendanceInA.id}/records`, {
+      method: 'PUT',
+      headers: { authorization: `Bearer ${tokenFor(branchUser)}`, 'x-branch-id': String(branchA.id), 'content-type': 'application/json' },
+      body: JSON.stringify({ records: [{ memberId: memberInA.id, status: 'PRESENT' }] }),
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.data[0].memberId, memberInA.id);
+    assert.equal(body.data[0].status, 'PRESENT');
+  });
+
   it('lists only members belonging to the active branch', async () => {
     const response = await get('/members', tokenFor(branchUser), { 'x-branch-id': String(branchA.id) });
     assert.equal(response.status, 200);
