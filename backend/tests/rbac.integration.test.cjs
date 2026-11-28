@@ -142,12 +142,13 @@ before(async () => {
 
 after(async () => {
   if (server) await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  // Remove finance rows before users because recorder/approver relations use RESTRICT.
+  if (financeInA) await prisma.financeTransaction.delete({ where: { id: financeInA.id } });
+  if (financeInB) await prisma.financeTransaction.delete({ where: { id: financeInB.id } });
   if (globalUser) await prisma.user.delete({ where: { id: globalUser.id } });
   if (branchUser) await prisma.user.delete({ where: { id: branchUser.id } });
   if (targetUser) await prisma.user.delete({ where: { id: targetUser.id } });
   if (otherBranchUser) await prisma.user.delete({ where: { id: otherBranchUser.id } });
-  if (financeInA) await prisma.financeTransaction.delete({ where: { id: financeInA.id } });
-  if (financeInB) await prisma.financeTransaction.delete({ where: { id: financeInB.id } });
   if (attendanceInA) await prisma.attendanceSession.delete({ where: { id: attendanceInA.id } });
   if (attendanceInB) await prisma.attendanceSession.delete({ where: { id: attendanceInB.id } });
   if (memberInA) await prisma.member.delete({ where: { id: memberInA.id } });
