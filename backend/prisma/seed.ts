@@ -22,7 +22,6 @@ async function main() {
     { name: 'members.view', description: 'View members' },
     { name: 'members.create', description: 'Create members' },
     { name: 'members.update', description: 'Update members' },
-    { name: 'members.delete', description: 'Delete members' },
     { name: 'finance.record', description: 'Record financial transactions' },
     { name: 'finance.approve', description: 'Approve financial transactions' },
     { name: 'reports.export', description: 'Export reports' },
