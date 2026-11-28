@@ -1,0 +1,60 @@
+name: Frontend validation
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - fix/phase-1-backend-compilation
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-validation.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: frontend-validation-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Generate package lock
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+
+      - name: Install exactly from lockfile
+        run: npm ci --no-audit --no-fund
+
+      - name: Type-check frontend
+        run: npm run typecheck
+
+      - name: Build Next.js application
+        run: npm run build
+
+      - name: Commit lockfile
+        working-directory: .
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/package-lock.json
+          if git diff --cached --quiet; then
+            echo "No frontend lockfile changes."
+          else
+            git commit -m "chore(frontend): add npm lockfile"
+            git pull --rebase origin "$GITHUB_REF_NAME"
+            git push
+          fi
