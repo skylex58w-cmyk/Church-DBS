@@ -7,6 +7,7 @@ All routes are mounted under `/api/v1/auth`.
 - `POST /login` accepts `email` and `password`; returns a short-lived JWT access token and sets the refresh token in an HttpOnly cookie.
 - `POST /refresh` reads the refresh cookie, consumes the presented token and returns a new access token while rotating the cookie.
 - `POST /logout` reads and revokes the refresh cookie, then clears it. Logout is idempotent.
+- `GET /me` requires a bearer access token and returns the authenticated account's ID, email, optional full name, and its role assignments with branch labels. It never returns password hashes or token material.
 - `POST /register` remains disabled.
 
 ## Token handling
