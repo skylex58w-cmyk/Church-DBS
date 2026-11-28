@@ -24,6 +24,7 @@ model Branch {
   createdAt       DateTime         @default(now())
   userRoles       UserRole[]
   rolePermissions RolePermission[]
+  members         Member[]
 }
 
 model Role {
@@ -86,4 +87,28 @@ model RefreshToken {
   @@index([userId, revokedAt])
   @@index([familyId])
   @@index([expiresAt])
+}
+
+
+model Member {
+  id             Int      @id @default(autoincrement())
+  branch         Branch   @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  branchId       Int
+  firstName      String
+  lastName       String
+  middleName     String?
+  gender         String?
+  dateOfBirth    DateTime? @db.Date
+  phone          String?
+  email          String?
+  address        String?
+  maritalStatus  String?
+  membershipStatus String  @default("ACTIVE")
+  joinedAt       DateTime? @db.Date
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([branchId, lastName, firstName])
+  @@index([branchId, membershipStatus])
+  @@index([phone])
 }
