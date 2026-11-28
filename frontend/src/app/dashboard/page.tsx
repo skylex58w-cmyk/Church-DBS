@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ProtectedRoute } from "@/components/protected-route";
 import { useAuth } from "@/components/auth-provider";
 import { apiRequest } from "@/lib/api";
+import { MemberManagement } from "@/components/member-management";
 
 type Branch = { id: number; name: string; code: string | null; createdAt: string };
 
@@ -168,6 +169,8 @@ function DashboardContent() {
             </div>
           </div>
         </div>
+
+        {accessToken && activeBranchId && <MemberManagement branchId={activeBranchId} accessToken={accessToken} />}
 
         <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-6">
           <h2 className="text-lg font-semibold">Next implementation stage</h2>
