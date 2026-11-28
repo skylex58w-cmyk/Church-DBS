@@ -7,7 +7,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Core application models (minimal set included for RBAC integration)
 model User {
   id           Int        @id @default(autoincrement())
   email        String     @unique
@@ -15,16 +14,23 @@ model User {
   passwordHash String
   createdAt    DateTime   @default(now())
   roles        UserRole[]
+  refreshTokens RefreshToken[]
+  recordedTransactions FinanceTransaction[] @relation("FinanceRecordedBy")
+  approvedTransactions FinanceTransaction[] @relation("FinanceApprovedBy")
 }
 
 model Branch {
-  id        Int      @id @default(autoincrement())
-  name      String
-  code      String?  @unique
-  createdAt DateTime @default(now())
+  id              Int              @id @default(autoincrement())
+  name            String
+  code            String?          @unique
+  createdAt       DateTime         @default(now())
+  userRoles       UserRole[]
+  rolePermissions RolePermission[]
+  members         Member[]
+  attendanceSessions AttendanceSession[]
+  financeTransactions FinanceTransaction[]
 }
 
-// RBAC models
 model Role {
   id             Int              @id @default(autoincrement())
   name           String           @unique
@@ -44,19 +50,127 @@ model Permission {
 
 model RolePermission {
   id           Int        @id @default(autoincrement())
-  role         Role       @relation(fields: [roleId], references: [id])
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
   roleId       Int
-  permission   Permission @relation(fields: [permissionId], references: [id])
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
   permissionId Int
-  // Optional scope (e.g., branch-scoped permission)
+  branch       Branch?    @relation(fields: [branchId], references: [id], onDelete: Cascade)
   branchId     Int?
+
+  // Partial unique indexes in migration.sql enforce one global or branch-scoped grant.
+  @@index([roleId, permissionId, branchId])
+  @@index([branchId])
 }
 
 model UserRole {
-  id       Int    @id @default(autoincrement())
-  user     User   @relation(fields: [userId], references: [id])
+  id       Int     @id @default(autoincrement())
+  user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId   Int
-  role     Role   @relation(fields: [roleId], references: [id])
+  role     Role    @relation(fields: [roleId], references: [id], onDelete: Cascade)
   roleId   Int
-  branchId Int?   // optional branch scope for this user-role assignment
+  branch   Branch? @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  branchId Int?
+
+  // Partial unique indexes in migration.sql enforce one global or branch-scoped assignment.
+  @@index([userId, roleId, branchId])
+  @@index([branchId])
+}
+
+
+model RefreshToken {
+  id                   Int       @id @default(autoincrement())
+  tokenHash            String    @unique
+  familyId             String
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId               Int
+  expiresAt            DateTime
+  createdAt            DateTime  @default(now())
+  revokedAt            DateTime?
+  replacedByTokenHash  String?
+
+  @@index([userId, revokedAt])
+  @@index([familyId])
+  @@index([expiresAt])
+}
+
+
+model Member {
+  id             Int      @id @default(autoincrement())
+  branch         Branch   @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  attendanceRecords AttendanceRecord[]
+  branchId       Int
+  firstName      String
+  lastName       String
+  middleName     String?
+  gender         String?
+  dateOfBirth    DateTime? @db.Date
+  phone          String?
+  email          String?
+  address        String?
+  maritalStatus  String?
+  membershipStatus String  @default("ACTIVE")
+  joinedAt       DateTime? @db.Date
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([branchId, lastName, firstName])
+  @@index([branchId, membershipStatus])
+  @@index([phone])
+}
+
+
+model AttendanceSession {
+  id          Int                @id @default(autoincrement())
+  branch      Branch             @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  branchId    Int
+  title       String
+  serviceDate DateTime           @db.Date
+  serviceType String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  records     AttendanceRecord[]
+
+  @@index([branchId, serviceDate])
+  @@index([branchId, serviceType, serviceDate])
+}
+
+model AttendanceRecord {
+  id        Int               @id @default(autoincrement())
+  session   AttendanceSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  sessionId Int
+  member    Member            @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  memberId  Int
+  status    String
+  markedAt  DateTime          @default(now())
+
+  @@unique([sessionId, memberId])
+  @@index([memberId])
+}
+
+
+model FinanceTransaction {
+  id                Int      @id @default(autoincrement())
+  branch            Branch   @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  branchId          Int
+  type              String
+  category          String
+  amount            Decimal  @db.Decimal(12, 2)
+  currency          String   @default("NGN")
+  description       String?
+  reference         String?
+  transactionDate   DateTime @db.Date
+  status            String   @default("PENDING")
+  recordedBy        User     @relation("FinanceRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
+  recordedById      Int
+  approvedBy        User?    @relation("FinanceApprovedBy", fields: [approvedById], references: [id], onDelete: Restrict)
+  approvedById      Int?
+  approvedAt        DateTime?
+  rejectionReason   String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([branchId, transactionDate])
+  @@index([branchId, status, transactionDate])
+  @@index([recordedById])
+  @@index([approvedById])
 }

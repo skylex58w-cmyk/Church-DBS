@@ -1,4 +1,4 @@
-name: Generate backend npm lockfile
+name: Backend validation and database migration
 
 on:
   workflow_dispatch:
@@ -12,9 +12,29 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: backend-foundation-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   backend-foundation:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: churchdb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d churchdb"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/churchdb?schema=public
     defaults:
       run:
         working-directory: backend
@@ -35,11 +55,23 @@ jobs:
       - name: Install exactly from lockfile
         run: npm ci --ignore-scripts --no-audit --no-fund
 
+      - name: Validate Prisma schema
+        run: npm run prisma:validate
+
       - name: Generate Prisma Client
         run: npx prisma generate
 
+      - name: Apply migrations to clean PostgreSQL
+        run: npm run prisma:migrate:deploy
+
+      - name: Build bcrypt native module
+        run: npm rebuild bcrypt --no-audit --no-fund
+
       - name: Compile backend
         run: npm run build
+
+      - name: Run RBAC PostgreSQL integration tests
+        run: npm run test:integration
 
       - name: Commit lockfile
         working-directory: .
@@ -51,5 +83,6 @@ jobs:
             echo "No lockfile changes to commit."
           else
             git commit -m "chore(backend): add npm lockfile"
+            git pull --rebase origin "$GITHUB_REF_NAME"
             git push
           fi

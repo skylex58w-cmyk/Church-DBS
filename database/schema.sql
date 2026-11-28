@@ -1,5 +1,4 @@
--- SQL schema export for reference
-
--- Tables created by Prisma migration (see prisma/schema.prisma)
-
--- This file is a placeholder for database/schema.sql
+-- Canonical database schema: backend/prisma/schema.prisma
+-- Canonical migration history: backend/prisma/migrations/
+-- Use Prisma Migrate; do not maintain a second hand-written SQL schema here.
+-- See documentation/database-migrations.md for safe deployment instructions.
