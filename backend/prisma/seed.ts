@@ -28,6 +28,7 @@ async function main() {
     { name: 'pastoral.view', description: 'Access pastoral records (sensitive)' },
     { name: 'users.manage', description: 'Manage users and roles' },
     { name: 'roles.manage', description: 'Manage roles and role permissions' },
+    { name: 'branches.view', description: 'View branches within the administrator’s authorized scope' },
   ];
 
   for (const permission of permissions) {
