@@ -6,6 +6,8 @@ import { ProtectedRoute } from "@/components/protected-route";
 import { useAuth } from "@/components/auth-provider";
 import { apiRequest } from "@/lib/api";
 
+type Branch = { id: number; name: string; code: string | null; createdAt: string };
+
 type CurrentUser = {
   id: number;
   email: string;
@@ -21,6 +23,9 @@ function DashboardContent() {
   const { logout, accessToken } = useAuth();
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [profileError, setProfileError] = useState("");
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [activeBranchId, setActiveBranchId] = useState("");
+  const [branchError, setBranchError] = useState("");
 
   useEffect(() => {
     if (!accessToken) return;
@@ -32,6 +37,49 @@ function DashboardContent() {
       });
     return () => { active = false; };
   }, [accessToken]);
+
+  useEffect(() => {
+    if (!accessToken || !currentUser) return;
+    let active = true;
+    const assignedBranchIds = Array.from(new Set(
+      currentUser.roleAssignments
+        .map((assignment) => assignment.branchId)
+        .filter((id): id is number => id !== null),
+    ));
+
+    async function loadBranches() {
+      try {
+        const allBranches = await apiRequest<Branch[]>("/branches", { method: "GET" }, accessToken);
+        if (active) {
+          setBranches(allBranches);
+          setActiveBranchId((current) => current || (allBranches[0] ? String(allBranches[0].id) : ""));
+        }
+        return;
+      } catch {
+        // Branch-scoped users are intentionally limited to their own assignments.
+      }
+
+      const scoped = await Promise.allSettled(assignedBranchIds.map((id) =>
+        apiRequest<Branch[]>("/branches", {
+          method: "GET",
+          headers: { "X-Branch-Id": String(id) },
+        }, accessToken),
+      ));
+      const visible = scoped.flatMap((result) => result.status === "fulfilled" ? result.value : []);
+      if (active) {
+        const unique = Array.from(new Map(visible.map((item) => [item.id, item])).values());
+        setBranches(unique);
+        setActiveBranchId((current) => current || (unique[0] ? String(unique[0].id) : ""));
+        if (!unique.length && assignedBranchIds.length) {
+          setBranchError("No assigned branch is currently available to this account.");
+        }
+      }
+    }
+
+    void loadBranches();
+    return () => { active = false; };
+  }, [accessToken, currentUser]);
+
   const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
   const [error, setError] = useState("");
@@ -70,6 +118,24 @@ function DashboardContent() {
         <h1 className="mt-3 text-3xl font-semibold tracking-tight">Dashboard</h1>
         <p className="mt-2 text-sm text-slate-500">Your secure church management session is active.</p>
         {profileError && <p role="alert" className="mt-5 rounded-xl bg-amber-50 p-4 text-sm text-amber-800">{profileError}</p>}
+
+        {branches.length > 0 && (
+          <section className="mt-6 max-w-xl rounded-2xl border border-slate-200 bg-white p-5">
+            <label htmlFor="active-branch" className="block text-sm font-semibold text-slate-700">Active branch</label>
+            <select
+              id="active-branch"
+              value={activeBranchId}
+              onChange={(event) => setActiveBranchId(event.target.value)}
+              className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-forest focus:ring-2 focus:ring-forest/20"
+            >
+              {branches.map((branch) => (
+                <option key={branch.id} value={String(branch.id)}>{branch.name}{branch.code ? " (" + branch.code + ")" : ""}</option>
+              ))}
+            </select>
+            <p className="mt-2 text-xs text-slate-500">The branch list is returned by the API using your assigned permissions and branch scope.</p>
+          </section>
+        )}
+        {branchError && <p role="status" className="mt-4 text-sm text-slate-500">{branchError}</p>}
 
         <div className="mt-8 grid gap-5 md:grid-cols-2">
           <section className="rounded-2xl border border-slate-200 bg-white p-6">
